@@ -1,0 +1,513 @@
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { z } from 'zod';
+import { AVATARS, PIXEL_COLORS, type PeopleView, type CommandResult, type RoomCommand, type RoomView, type SessionView } from '../../../packages/protocol/src/index.js';
+import type { Storage } from './storage.js';
+import { passwordHash, passwordMatches } from './passwords.js';
+
+const minute = 60_000;
+export const policy = { grace: 5 * minute, absent: 30 * minute, idle: 120 * minute, absolute: 24 * 60 * minute, session: 7 * 24 * 60 * minute };
+const identity = z.object({ nickname: z.string().trim().min(1).max(24).refine(s => !/[\p{Cc}\p{Cf}]/u.test(s), 'Use a visible nickname.'), avatar: z.enum(AVATARS) });
+export const createSchema = identity.extend({ commandId: z.string().uuid() }).strict();
+export const joinSchema = createSchema.extend({ invitation: z.string().trim().min(1).max(100) }).strict();
+export const commandSchema = z.object({ commandId: z.string().uuid(), roomId: z.string().regex(/^[a-f0-9]{32}$/), expectedRevision: z.number().int().nonnegative(), type: z.enum(['keepAlive', 'leave', 'close', 'regenerateInvite', 'reopen', 'theme']), theme: z.enum(['sage', 'sunset', 'midnight']).optional() }).strict();
+const designSchema = z.object({ version: z.literal(1), pixels: z.array(z.number().int().min(0).max(PIXEL_COLORS.length - 1)).length(576) }).strict().nullable();
+
+const memberSchema = z.object({ id: z.string(), sessionId: z.string(), nickname: z.string(), avatar: z.enum(AVATARS), avatarDesign: designSchema.default(null), seat: z.number(), disconnectedAt: z.number().nullable() });
+const roomSchema = z.object({ id: z.string(), ownerId: z.string(), invitationHash: z.string(), code: z.string(), players: z.array(memberSchema).max(2), revision: z.number(), createdAt: z.number(), lastActive: z.number(), admissionsOpen: z.boolean(), theme: z.enum(['sage', 'sunset', 'midnight']).default('sage') });
+const sessionSchema = z.object({ csrf: z.string(), expiresAt: z.number(), roomId: z.string().nullable(), accountId: z.string().nullable().default(null), authenticatedAt: z.number().nullable().default(null) });
+const accountSchema = z.object({ id: z.string(), username: z.string().nullable(), passwordHash: z.string().nullable(), recoveryHash: z.string().nullable().default(null), googleSubject: z.string().nullable(), nickname: z.string(), avatar: z.enum(AVATARS), avatarDesign: designSchema.default(null), provider: z.enum(['password', 'google']), categories: z.object({ friends: z.string(), special: z.string() }).default({ friends: 'Friends', special: 'My special person' }), createdAt: z.number() });
+const receiptSchema = z.record(z.string(), z.object({ fingerprint: z.string(), result: z.unknown(), at: z.number() }));
+const connectionSchema = z.object({ id: z.string(), a: z.string(), b: z.string(), kind: z.enum(['friend', 'special']), labels: z.record(z.string(), z.string()), createdAt: z.number() });
+const inviteSchema = z.object({ id: z.string(), creator: z.string(), tokenHash: z.string(), kind: z.enum(['friend', 'special']), expiresAt: z.number(), acceptedBy: z.string().nullable() });
+const stateSchema = z.object({ version: z.literal(3), sessions: z.record(z.string(), sessionSchema), rooms: z.record(z.string(), roomSchema), receipts: receiptSchema, accounts: z.record(z.string(), accountSchema), connections: z.record(z.string(), connectionSchema), invitations: z.record(z.string(), inviteSchema), blocks: z.array(z.object({ owner: z.string(), other: z.string() })) });
+const legacySchema = z.object({ version: z.literal(1), sessions: z.record(z.string(), sessionSchema), rooms: z.record(z.string(), roomSchema), receipts: receiptSchema });
+export const credentialsSchema = z.object({ username: z.string().trim().toLowerCase().regex(/^[a-z0-9_]{3,24}$/, 'Use 3–24 letters, numbers, or underscores.'), password: z.string().min(12, 'Use at least 12 characters.').max(128, 'Use no more than 128 characters.') }).strict();
+export const signupSchema = credentialsSchema.extend({ nickname: identity.shape.nickname, avatar: identity.shape.avatar });
+export const profileSchema = identity.extend({ avatarDesign: designSchema.optional() }).strict();
+type State = z.infer<typeof stateSchema>;
+type Room = z.infer<typeof roomSchema>;
+type Member = z.infer<typeof memberSchema>;
+export class AppError extends Error {
+  constructor(public code: string, message: string, public status = 400) { super(message); }
+}
+export const hash = (value: string) => createHash('sha256').update(value).digest('hex');
+const random = () => randomBytes(16).toString('hex');
+function roomCode() {
+  const alphabet = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+  return [...randomBytes(10)].map(b => alphabet[b & 31]).join('');
+}
+
+export class Rooms {
+  private state: State = { version: 3, sessions: {}, rooms: {}, receipts: {}, accounts: {}, connections: {}, invitations: {}, blocks: [] };
+  private tail: Promise<unknown> = Promise.resolve();
+  private online = new Map<string, Set<string>>();
+  private connecting = new Set<string>();
+  onChange: () => void = () => {};
+  constructor(private storage: Storage, private clock = () => Date.now(), private googleEnabled = false) {}
+
+  async init() {
+    const value = await this.storage.load();
+    if (value !== null) {
+      if ((value as { version?: number }).version === 1) {
+        const legacy = legacySchema.parse(value);
+        this.state = { ...legacy, version: 3, accounts: {}, connections: {}, invitations: {}, blocks: [] };
+      } else if ((value as { version?: number }).version === 2) {
+        const migrated = { ...(value as object), version: 3, connections: {}, invitations: {}, blocks: [] };
+        this.state = stateSchema.parse(migrated);
+      } else this.state = stateSchema.parse(value);
+    }
+    for (const room of Object.values(this.state.rooms)) for (const p of room.players) p.disconnectedAt ??= this.clock();
+    await this.storage.save(this.state);
+    await this.transact(() => {});
+  }
+
+  private transact<T>(operation: () => T): Promise<T> {
+    const task = this.tail.then(async () => {
+      await this.storage.assertOwnership?.();
+      const previous = structuredClone(this.state);
+      try {
+        this.cleanup();
+        const result = operation();
+        if (JSON.stringify(previous) !== JSON.stringify(this.state)) await this.storage.save(this.state);
+        this.onChange();
+        return result;
+      } catch (error) { this.state = previous; throw error; }
+    });
+    this.tail = task.catch(() => {});
+    return task;
+  }
+
+  private isOnline(member: Member) { return !!this.online.get(member.sessionId)?.size; }
+  private expiry(room: Room) {
+    const offline = room.players.every(p => !this.isOnline(p));
+    const lastOffline = Math.max(...room.players.map(p => p.disconnectedAt ?? this.clock()), room.createdAt);
+    return Math.min(room.createdAt + policy.absolute, room.lastActive + policy.idle, offline ? lastOffline + policy.absent : Infinity);
+  }
+  private removeRoom(room: Room) {
+    for (const p of room.players) { const session = this.state.sessions[p.sessionId]; if (session?.roomId === room.id) session.roomId = null; }
+    delete this.state.rooms[room.id];
+  }
+  private cleanup() {
+    const now = this.clock();
+    for (const room of Object.values(this.state.rooms)) {
+      if (!room.players.length || this.expiry(room) <= now) { this.removeRoom(room); continue; }
+      if (room.players.some(p => this.isOnline(p))) {
+        const removed = room.players.filter(p => !this.isOnline(p) && p.disconnectedAt !== null && p.disconnectedAt + policy.grace <= now);
+        for (const p of removed) {
+          this.state.sessions[p.sessionId] && (this.state.sessions[p.sessionId].roomId = null);
+          room.players = room.players.filter(x => x.id !== p.id);
+          room.revision++;
+        }
+        if (!room.players.some(p => p.id === room.ownerId)) room.ownerId = room.players[0].id;
+      }
+    }
+    for (const [id, s] of Object.entries(this.state.sessions)) if (s.expiresAt <= now && !s.roomId) delete this.state.sessions[id];
+    for (const [key, receipt] of Object.entries(this.state.receipts)) if (receipt.at + policy.absent < now) delete this.state.receipts[key];
+    for (const [id, invitation] of Object.entries(this.state.invitations)) if (invitation.expiresAt <= now) delete this.state.invitations[id];
+  }
+
+  async sweep() { await this.transact(() => {}); }
+  async settled() { await this.tail; await this.storage.assertOwnership?.(); }
+  async authenticate(token?: string): Promise<{ token: string; sessionId: string }> {
+    if (token && /^[a-f0-9]{64}$/.test(token)) {
+      const id = hash(token);
+      await this.tail;
+      if (this.state.sessions[id]?.expiresAt > this.clock()) return { token, sessionId: id };
+    }
+    return this.transact(() => {
+      if (Object.keys(this.state.sessions).length >= 3000) throw new AppError('BUSY', 'Our little space is full right now. Please try later.', 503);
+      const token = randomBytes(32).toString('hex');
+      const sessionId = hash(token);
+      this.state.sessions[sessionId] = { csrf: random(), expiresAt: this.clock() + policy.session, roomId: null, accountId: null, authenticatedAt: null };
+      return { token, sessionId };
+    });
+  }
+  validSession(sessionId: string) { return !!this.state.sessions[sessionId] && this.state.sessions[sessionId].expiresAt > this.clock(); }
+  validCsrf(sessionId: string, csrf: unknown) { return this.validSession(sessionId) && this.state.sessions[sessionId].csrf === csrf; }
+
+  view(sessionId: string): SessionView {
+    const session = this.state.sessions[sessionId];
+    if (!session || session.expiresAt <= this.clock()) throw new AppError('SESSION_EXPIRED', 'Your session expired. Refresh to start again.', 401);
+    const room = session.roomId ? this.state.rooms[session.roomId] : undefined;
+    const stored = session.accountId ? this.state.accounts[session.accountId] : undefined;
+    const account = stored ? { id: stored.id, username: stored.username, nickname: stored.nickname, avatar: stored.avatar, avatarDesign: stored.avatarDesign, provider: stored.provider } : null;
+    return { csrf: session.csrf, room: room && this.expiry(room) > this.clock() ? this.project(room, sessionId) : null, serverTime: this.clock(), account,
+      access: { tier: account ? 'account' : 'guest', accountCatalogue: !!account }, auth: { google: this.googleEnabled } };
+  }
+
+  private rotateSession(sessionId: string, accountId: string | null) {
+    this.view(sessionId);
+    const old = this.state.sessions[sessionId];
+    if (accountId) {
+      const others = Object.entries(this.state.sessions).filter(([id, s]) => id !== sessionId && s.accountId === accountId && s.roomId && this.state.rooms[s.roomId]);
+      for (const [otherId, other] of others) {
+        if (old.roomId && old.roomId !== other.roomId) throw new AppError('ROOM_CONFLICT', 'This account already has another room. Leave that room before signing in here.', 409);
+        if (this.online.get(otherId)?.size) throw new AppError('ACCOUNT_IN_USE', 'This account is in a room on another browser. Leave there before signing in here.', 409);
+        if (!old.roomId) {
+          old.roomId = other.roomId;
+          const member = this.state.rooms[other.roomId!].players.find(p => p.sessionId === otherId);
+          if (member) member.sessionId = sessionId;
+          other.roomId = null;
+        }
+      }
+    }
+    const token = randomBytes(32).toString('hex');
+    const newId = hash(token);
+    this.state.sessions[newId] = { ...old, accountId, csrf: random(), expiresAt: this.clock() + policy.session, authenticatedAt: accountId ? this.clock() : null };
+    const room = old.roomId ? this.state.rooms[old.roomId] : undefined;
+    const member = room?.players.find(p => p.sessionId === sessionId);
+    if (member) { member.sessionId = newId; member.disconnectedAt = this.clock(); room!.revision++; }
+    delete this.state.sessions[sessionId];
+    for (const key of Object.keys(this.state.receipts)) if (key.startsWith(`${sessionId}:`)) delete this.state.receipts[key];
+    return { token, sessionId: newId };
+  }
+
+  async signup(sessionId: string, raw: unknown) {
+    const input = signupSchema.parse(raw);
+    if (this.view(sessionId).account) throw new AppError('ALREADY_SIGNED_IN', 'You are already signed in.');
+    const encoded = await passwordHash(input.password);
+    return this.transact(() => {
+      this.view(sessionId);
+      if (Object.keys(this.state.accounts).length >= 3000) throw new AppError('BUSY', 'Account creation is temporarily unavailable.', 503);
+      if (Object.values(this.state.accounts).some(a => a.username === input.username)) throw new AppError('USERNAME_TAKEN', 'That username is unavailable. Try another.', 409);
+      const id = random();
+      const recoveryCode = randomBytes(24).toString('hex');
+      this.state.accounts[id] = { id, username: input.username, passwordHash: encoded, recoveryHash: hash(recoveryCode), googleSubject: null, nickname: input.nickname, avatar: input.avatar, avatarDesign: null, categories: { friends: 'Friends', special: 'My special person' }, provider: 'password', createdAt: this.clock() };
+      return { ...this.rotateSession(sessionId, id), recoveryCode };
+    });
+  }
+  async login(sessionId: string, raw: unknown) {
+    const input = credentialsSchema.parse(raw);
+    await this.tail;
+    const account = Object.values(this.state.accounts).find(a => a.username === input.username);
+    const verifiedHash = account?.passwordHash;
+    const matches = await passwordMatches(input.password, verifiedHash);
+    if (!account || !matches) throw new AppError('INVALID_LOGIN', 'The username or password is incorrect.', 401);
+    return this.transact(() => {
+      // A reset can finish while scrypt is running. Do not revive access with the old password.
+      if (!this.state.accounts[account.id] || this.state.accounts[account.id].passwordHash !== verifiedHash) throw new AppError('INVALID_LOGIN', 'The username or password is incorrect.', 401);
+      return this.rotateSession(sessionId, account.id);
+    });
+  }
+  async googleLogin(sessionId: string, subject: string, suggestedName: string) {
+    return this.transact(() => {
+      this.view(sessionId);
+      // Provider subject is verified by Supabase. Never link to a password account by email/name.
+      let account = Object.values(this.state.accounts).find(a => a.googleSubject === subject);
+      if (!account) {
+        if (Object.keys(this.state.accounts).length >= 3000) throw new AppError('BUSY', 'Account creation is temporarily unavailable.', 503);
+        const safeName = suggestedName.replace(/[\p{Cc}\p{Cf}]/gu, '').trim().slice(0, 24) || 'Your person';
+        const current = this.view(sessionId).room?.players.find(p => p.isYou);
+        const id = random();
+        account = { id, username: null, passwordHash: null, recoveryHash: null, googleSubject: subject, nickname: current?.nickname || safeName, avatar: current?.avatar || 'moss', avatarDesign: null, categories: { friends: 'Friends', special: 'My special person' }, provider: 'google', createdAt: this.clock() };
+        this.state.accounts[id] = account;
+      }
+      return this.rotateSession(sessionId, account.id);
+    });
+  }
+  async logout(sessionId: string) { return this.transact(() => this.rotateSession(sessionId, null)); }
+  private requireAccount(sessionId: string) {
+    const account = this.view(sessionId).account;
+    if (!account) throw new AppError('SIGN_IN_REQUIRED', 'Sign in to use your saved profile and people.', 403);
+    return this.state.accounts[account.id];
+  }
+  private revokeOtherSessions(accountId: string, except: string) {
+    for (const [id, session] of Object.entries(this.state.sessions)) if (id !== except && session.accountId === accountId) {
+      const room = session.roomId ? this.state.rooms[session.roomId] : undefined;
+      if (room) {
+        room.players = room.players.filter(p => p.sessionId !== id);
+        if (!room.players.length) this.removeRoom(room);
+        else { room.ownerId = room.players[0].id; room.revision++; }
+      }
+      delete this.state.sessions[id];
+      for (const key of Object.keys(this.state.receipts)) if (key.startsWith(`${id}:`)) delete this.state.receipts[key];
+    }
+  }
+  async changePassword(sessionId: string, raw: unknown) {
+    const input = z.object({ currentPassword: z.string().max(128), password: credentialsSchema.shape.password }).strict().parse(raw);
+    const account = this.requireAccount(sessionId);
+    const previousHash = account.passwordHash;
+    if (!previousHash || !await passwordMatches(input.currentPassword, previousHash)) throw new AppError('INVALID_LOGIN', 'Your current password is incorrect.', 401);
+    const encoded = await passwordHash(input.password);
+    return this.transact(() => {
+      const current = this.requireAccount(sessionId);
+      if (current.passwordHash !== previousHash) throw new AppError('CONFLICT', 'Your password changed. Sign in again.', 409);
+      current.passwordHash = encoded;
+      this.revokeOtherSessions(current.id, sessionId);
+      return this.rotateSession(sessionId, current.id);
+    });
+  }
+  async recoveryKey(sessionId: string, raw: unknown) {
+    const input = z.object({ currentPassword: z.string().max(128) }).strict().parse(raw);
+    const account = this.requireAccount(sessionId);
+    if (!account.passwordHash || !await passwordMatches(input.currentPassword, account.passwordHash)) throw new AppError('INVALID_LOGIN', 'Your current password is incorrect.', 401);
+    return this.transact(() => {
+      const current = this.requireAccount(sessionId);
+      const recoveryCode = randomBytes(24).toString('hex'); current.recoveryHash = hash(recoveryCode);
+      return { recoveryCode };
+    });
+  }
+  async recover(sessionId: string, raw: unknown) {
+    const input = z.object({ username: credentialsSchema.shape.username, recoveryCode: z.string().regex(/^[a-f0-9]{48}$/), password: credentialsSchema.shape.password }).strict().parse(raw);
+    await this.tail; this.view(sessionId);
+    const account = Object.values(this.state.accounts).find(a => a.username === input.username);
+    const proof = hash(input.recoveryCode);
+    const previousHash = account?.recoveryHash;
+    if (!account || !previousHash || !timingSafeEqual(Buffer.from(proof, 'hex'), Buffer.from(previousHash, 'hex'))) throw new AppError('INVALID_RECOVERY', 'The username or recovery key is incorrect.', 401);
+    const encoded = await passwordHash(input.password);
+    return this.transact(() => {
+      this.view(sessionId);
+      if (this.state.accounts[account.id]?.recoveryHash !== previousHash) throw new AppError('INVALID_RECOVERY', 'That recovery key is no longer valid.', 401);
+      this.revokeOtherSessions(account.id, sessionId);
+      const recoveryCode = randomBytes(24).toString('hex');
+      this.state.accounts[account.id].passwordHash = encoded;
+      this.state.accounts[account.id].recoveryHash = hash(recoveryCode);
+      return { ...this.rotateSession(sessionId, account.id), recoveryCode };
+    });
+  }
+  people(sessionId: string): PeopleView {
+    const account = this.requireAccount(sessionId);
+    return { categories: { ...account.categories },
+      connections: Object.values(this.state.connections).filter(c => c.a === account.id || c.b === account.id).flatMap(c => {
+        const other = this.state.accounts[c.a === account.id ? c.b : c.a];
+        return other ? [{ id: c.id, accountId: other.id, nickname: other.nickname, avatar: other.avatar, avatarDesign: other.avatarDesign, kind: c.kind, petName: c.labels[account.id] || '' }] : [];
+      }),
+      invitations: Object.values(this.state.invitations).filter(i => i.creator === account.id && !i.acceptedBy && i.expiresAt > this.clock()).map(i => ({ id: i.id, kind: i.kind, expiresAt: i.expiresAt })),
+      blocked: this.state.blocks.filter(b => b.owner === account.id).flatMap(b => { const peer = this.state.accounts[b.other]; return peer ? [{ id: peer.id, nickname: peer.nickname }] : []; }),
+    };
+  }
+  private blocked(a: string, b: string) { return this.state.blocks.some(row => (row.owner === a && row.other === b) || (row.owner === b && row.other === a)); }
+  previewConnection(sessionId: string, token: string) {
+    const account = this.requireAccount(sessionId);
+    const invite = Object.values(this.state.invitations).find(i => i.tokenHash === hash(token) && i.expiresAt > this.clock() && !i.acceptedBy);
+    const creator = invite ? this.state.accounts[invite.creator] : undefined;
+    if (!invite || !creator || this.blocked(creator.id, account.id)) throw new AppError('INVITE_UNAVAILABLE', 'That people invitation is unavailable or expired.', 404);
+    return { nickname: creator.nickname, avatar: creator.avatar, avatarDesign: creator.avatarDesign, kind: invite.kind, isYou: creator.id === account.id };
+  }
+  async peopleAction(sessionId: string, raw: unknown) {
+    const label = z.string().trim().min(1).max(24).refine(s => !/[\p{Cc}\p{Cf}]/u.test(s));
+    const id = z.string().regex(/^[a-f0-9]{32}$/);
+    const input = z.discriminatedUnion('type', [
+      z.object({ type: z.literal('invite'), kind: z.enum(['friend', 'special']) }).strict(),
+      z.object({ type: z.literal('accept'), token: z.string().regex(/^[a-f0-9]{48}$/) }).strict(),
+      z.object({ type: z.literal('revoke'), id }).strict(), z.object({ type: z.literal('remove'), id }).strict(),
+      z.object({ type: z.literal('label'), id, petName: label.or(z.literal('')) }).strict(),
+      z.object({ type: z.literal('categories'), friends: label, special: label }).strict(),
+      z.object({ type: z.literal('block'), id }).strict(), z.object({ type: z.literal('unblock'), id }).strict(),
+    ]).parse(raw);
+    return this.transact(() => {
+      const account = this.requireAccount(sessionId);
+      let token: string | undefined;
+      if (input.type === 'categories') account.categories = { friends: input.friends, special: input.special };
+      if (input.type === 'invite') {
+        if (Object.values(this.state.invitations).filter(i => i.creator === account.id && !i.acceptedBy).length >= 5) throw new AppError('INVITE_LIMIT', 'Revoke an older invitation before making another.');
+        if (input.kind === 'special' && Object.values(this.state.connections).some(c => c.kind === 'special' && (c.a === account.id || c.b === account.id))) throw new AppError('SPECIAL_LIMIT', 'You already have a special person. Remove that connection before choosing another.');
+        token = randomBytes(24).toString('hex'); const inviteId = random();
+        this.state.invitations[inviteId] = { id: inviteId, creator: account.id, tokenHash: hash(token), kind: input.kind, expiresAt: this.clock() + 7 * 86400000, acceptedBy: null };
+      }
+      if (input.type === 'accept') {
+        const invite = Object.values(this.state.invitations).find(i => i.tokenHash === hash(input.token) && i.expiresAt > this.clock());
+        if (!invite || (invite.acceptedBy && invite.acceptedBy !== account.id) || this.blocked(invite.creator, account.id) || !this.state.accounts[invite.creator]) throw new AppError('INVITE_UNAVAILABLE', 'That people invitation is unavailable or expired.', 404);
+        if (invite.creator === account.id) throw new AppError('SELF_INVITE', 'Send this invitation to your person, rather than accepting it yourself.');
+        if (!invite.acceptedBy) {
+          const existing = Object.values(this.state.connections).find(c => (c.a === invite.creator && c.b === account.id) || (c.b === invite.creator && c.a === account.id));
+          if (invite.kind === 'special' && Object.values(this.state.connections).some(c => c.kind === 'special' && [c.a, c.b].some(id => id === account.id || id === invite.creator))) throw new AppError('SPECIAL_LIMIT', 'One of you already has a special person. Remove that connection before accepting another.');
+          if (existing && invite.kind === 'friend') throw new AppError('ALREADY_CONNECTED', 'You are already connected.');
+          if (existing) existing.kind = 'special';
+          else { const connectionId = random(); this.state.connections[connectionId] = { id: connectionId, a: invite.creator, b: account.id, kind: invite.kind, labels: {}, createdAt: this.clock() }; }
+          invite.acceptedBy = account.id;
+        }
+      }
+      if (input.type === 'revoke') {
+        const invite = this.state.invitations[input.id];
+        if (!invite || invite.creator !== account.id) throw new AppError('NOT_FOUND', 'Invitation not found.', 404);
+        delete this.state.invitations[input.id];
+      }
+      if (input.type === 'remove' || input.type === 'label') {
+        const connection = this.state.connections[input.id];
+        if (!connection || ![connection.a, connection.b].includes(account.id)) throw new AppError('NOT_FOUND', 'Connection not found.', 404);
+        if (input.type === 'remove') delete this.state.connections[input.id];
+        else connection.labels[account.id] = input.petName;
+      }
+      if (input.type === 'block') {
+        if (input.id === account.id || !this.state.accounts[input.id]) throw new AppError('NOT_FOUND', 'Person not found.', 404);
+        if (!this.state.blocks.some(b => b.owner === account.id && b.other === input.id)) this.state.blocks.push({ owner: account.id, other: input.id });
+        for (const [id, c] of Object.entries(this.state.connections)) if ([c.a, c.b].includes(account.id) && [c.a, c.b].includes(input.id)) delete this.state.connections[id];
+        // Leave any shared room; blocking never secretly gives control over the other person's seat.
+        for (const [id, s] of Object.entries(this.state.sessions)) if (s.accountId === account.id && s.roomId) {
+          const room = this.state.rooms[s.roomId];
+          if (room?.players.some(p => this.state.sessions[p.sessionId]?.accountId === input.id)) {
+            room.players = room.players.filter(p => p.sessionId !== id); s.roomId = null;
+            if (!room.players.length) this.removeRoom(room); else { room.ownerId = room.players[0].id; room.revision++; }
+          }
+        }
+      }
+      if (input.type === 'unblock') this.state.blocks = this.state.blocks.filter(b => !(b.owner === account.id && b.other === input.id));
+      return { people: this.people(sessionId), ...(token ? { token } : {}) };
+    });
+  }
+  async saveProfile(sessionId: string, raw: unknown) {
+    const input = profileSchema.parse(raw);
+    return this.transact(() => {
+      const session = this.view(sessionId);
+      if (!session.account) throw new AppError('SIGN_IN_REQUIRED', 'Sign in to save a profile.', 403);
+      Object.assign(this.state.accounts[session.account.id], input);
+      const room = this.state.sessions[sessionId].roomId;
+      const member = room ? this.state.rooms[room]?.players.find(p => p.sessionId === sessionId) : null;
+      if (member) { member.nickname = input.nickname; member.avatar = input.avatar; member.avatarDesign = this.state.accounts[session.account.id].avatarDesign; this.state.rooms[room!].revision++; }
+      return this.view(sessionId);
+    });
+  }
+  async deleteAccount(sessionId: string) {
+    return this.transact(() => {
+      const account = this.view(sessionId).account;
+      if (!account) throw new AppError('SIGN_IN_REQUIRED', 'Sign in to manage your account.', 403);
+      const authenticated = this.state.sessions[sessionId].authenticatedAt;
+      if (!authenticated || authenticated + 10 * 60000 < this.clock()) throw new AppError('REAUTHENTICATE', 'For account deletion, sign out and sign in again first. Your room can continue as a guest.', 403);
+      for (const [id, session] of Object.entries(this.state.sessions)) if (id !== sessionId && session.accountId === account.id) {
+        if (session.roomId && this.state.rooms[session.roomId]) {
+          const room = this.state.rooms[session.roomId];
+          room.players = room.players.filter(p => p.sessionId !== id);
+          if (!room.players.length) this.removeRoom(room);
+          else { room.ownerId = room.players[0].id; room.revision++; }
+        }
+        delete this.state.sessions[id];
+      }
+      delete this.state.accounts[account.id];
+      for (const [id, c] of Object.entries(this.state.connections)) if (c.a === account.id || c.b === account.id) delete this.state.connections[id];
+      for (const [id, i] of Object.entries(this.state.invitations)) if (i.creator === account.id || i.acceptedBy === account.id) delete this.state.invitations[id];
+      this.state.blocks = this.state.blocks.filter(b => b.owner !== account.id && b.other !== account.id);
+      return this.rotateSession(sessionId, null);
+    });
+  }
+  private project(room: Room, sessionId: string): RoomView {
+    return {
+      id: room.id, revision: room.revision, phase: room.players.length === 2 ? 'lobby' : 'waiting',
+      code: room.code, isOwner: room.players.some(p => p.id === room.ownerId && p.sessionId === sessionId),
+      players: room.players.map(p => {
+        const viewer = this.state.sessions[sessionId]?.accountId;
+        const peer = this.state.sessions[p.sessionId]?.accountId;
+        const connection = viewer && peer && viewer !== peer ? Object.values(this.state.connections).find(c => (c.a === viewer && c.b === peer) || (c.b === viewer && c.a === peer)) : null;
+        return { id: p.id, nickname: p.nickname, avatar: p.avatar, avatarDesign: p.avatarDesign, petName: connection && viewer ? connection.labels[viewer] || null : null, seat: p.seat, isYou: p.sessionId === sessionId, connected: this.isOnline(p), reconnectUntil: this.isOnline(p) ? null : (p.disconnectedAt ?? this.clock()) + policy.grace };
+      }),
+      expiresAt: this.expiry(room), serverTime: this.clock(), admissionsOpen: room.admissionsOpen,
+      canReopen: room.players.length === 1 && !room.admissionsOpen, games: [], createdAt: room.createdAt, theme: room.theme,
+    };
+  }
+  private current(sessionId: string) { return { room: this.view(sessionId).room }; }
+  private checkAccountRoom(sessionId: string) {
+    const id = this.state.sessions[sessionId]?.accountId;
+    if (id && Object.entries(this.state.sessions).some(([otherId, s]) => otherId !== sessionId && s.accountId === id && s.roomId && this.state.rooms[s.roomId])) throw new AppError('ACCOUNT_IN_USE', 'This account already has a room. Return to that room or leave it first.', 409);
+  }
+  private once<T>(sessionId: string, commandId: string, payload: unknown, operation: () => T): T {
+    const key = `${sessionId}:${commandId}`;
+    const fingerprint = hash(JSON.stringify(payload));
+    const cached = this.state.receipts[key];
+    if (cached) {
+      if (cached.fingerprint !== fingerprint) throw new AppError('COMMAND_REUSED', 'Please try that action again with a new request.');
+      return structuredClone(cached.result) as T;
+    }
+    const result = operation();
+    this.state.receipts[key] = { fingerprint, result: structuredClone(result), at: this.clock() };
+    const keys = Object.keys(this.state.receipts).filter(k => k.startsWith(`${sessionId}:`));
+    for (const key of keys.slice(0, Math.max(0, keys.length - 100))) delete this.state.receipts[key];
+    return result;
+  }
+
+  async create(sessionId: string, raw: unknown): Promise<CommandResult> {
+    const input = createSchema.parse(raw);
+    return this.transact(() => this.once(sessionId, input.commandId, input, () => {
+      const session = this.view(sessionId);
+      if (session.room) throw new AppError('ALREADY_IN_ROOM', 'Leave your current room before creating another.');
+      this.checkAccountRoom(sessionId);
+      if (Object.keys(this.state.rooms).length >= 1000) throw new AppError('BUSY', 'No new rooms are available. Try again shortly.', 503);
+      let code = roomCode();
+      while (Object.values(this.state.rooms).some(r => r.code === code)) code = roomCode();
+      const invitation = random();
+      const id = random();
+      const player = { id: random(), sessionId, nickname: input.nickname, avatar: input.avatar, avatarDesign: session.account?.avatarDesign || null, seat: 1, disconnectedAt: this.clock() };
+      this.state.rooms[id] = { id, ownerId: player.id, invitationHash: hash(invitation), code, players: [player], revision: 1, createdAt: this.clock(), lastActive: this.clock(), admissionsOpen: true, theme: 'sage' };
+      this.state.sessions[sessionId].roomId = id;
+      return { ...this.current(sessionId), invitation };
+    }));
+  }
+
+  async join(sessionId: string, raw: unknown): Promise<CommandResult> {
+    const input = joinSchema.parse(raw);
+    return this.transact(() => this.once(sessionId, input.commandId, input, () => {
+      if (this.view(sessionId).room) throw new AppError('ALREADY_IN_ROOM', 'You are already in a room. Leave it before joining another.');
+      this.checkAccountRoom(sessionId);
+      const key = input.invitation.replace(/[\s-]/g, '').toUpperCase();
+      const room = Object.values(this.state.rooms).find(r => r.code === key || r.invitationHash === hash(input.invitation));
+      if (!room) throw new AppError('ROOM_UNAVAILABLE', 'That invitation is invalid or has expired.', 404);
+      const joiningAccount = this.state.sessions[sessionId].accountId;
+      if (joiningAccount && room.players.some(p => { const peer = this.state.sessions[p.sessionId]?.accountId; return peer && this.blocked(joiningAccount, peer); })) throw new AppError('ROOM_UNAVAILABLE', 'That room is unavailable.', 403);
+      if (!room.admissionsOpen || room.players.length >= 2) throw new AppError('ROOM_FULL', 'This room already has its two people. Ask for a new invitation.', 409);
+      const seat = room.players.some(p => p.seat === 1) ? 2 : 1;
+      room.players.push({ id: random(), sessionId, nickname: input.nickname, avatar: input.avatar, avatarDesign: this.view(sessionId).account?.avatarDesign || null, seat, disconnectedAt: this.clock() });
+      room.admissionsOpen = false;
+      room.lastActive = this.clock(); room.revision++;
+      this.state.sessions[sessionId].roomId = room.id;
+      return this.current(sessionId);
+    }));
+  }
+
+  async command(sessionId: string, raw: unknown): Promise<CommandResult> {
+    const input: RoomCommand = commandSchema.parse(raw);
+    return this.transact(() => this.once(sessionId, input.commandId, input, () => {
+      const room = this.state.rooms[input.roomId];
+      if (!this.validSession(sessionId) || !room || !room.players.some(p => p.sessionId === sessionId)) throw new AppError('NOT_MEMBER', 'This room is no longer available to your session.', 403);
+      if (room.revision !== input.expectedRevision) throw new AppError('STALE', 'The room changed. We have refreshed it; please try again.', 409);
+      const owner = room.players.find(p => p.id === room.ownerId)?.sessionId === sessionId;
+      let invitation: string | undefined;
+      if (['close', 'regenerateInvite', 'reopen', 'theme'].includes(input.type) && !owner) throw new AppError('OWNER_ONLY', 'Only the room creator can change the room settings.', 403);
+      if (input.type === 'close') this.removeRoom(room);
+      else if (input.type === 'leave') {
+        room.players = room.players.filter(p => p.sessionId !== sessionId);
+        this.state.sessions[sessionId].roomId = null;
+        if (!room.players.length) this.removeRoom(room);
+        else { room.ownerId = room.players[0].id; room.revision++; room.lastActive = this.clock(); }
+      } else {
+        if (input.type === 'theme') { if (!input.theme) throw new AppError('INVALID_INPUT', 'Choose a room theme.'); room.theme = input.theme; }
+        if (input.type === 'reopen' && room.players.length !== 1) throw new AppError('NOT_READY', 'The other seat is still reserved. Wait for the reconnect period to end.');
+        if (input.type === 'regenerateInvite' || input.type === 'reopen') {
+          invitation = random(); room.invitationHash = hash(invitation);
+          do { room.code = roomCode(); } while (Object.values(this.state.rooms).some(r => r.id !== room.id && r.code === room.code));
+          if (input.type === 'reopen') room.admissionsOpen = true;
+        }
+        room.lastActive = this.clock(); room.revision++;
+      }
+      return { ...this.current(sessionId), ...(invitation ? { invitation } : {}) };
+    }));
+  }
+
+  async connect(sessionId: string, connectionId: string) {
+    if (!this.validSession(sessionId)) throw new AppError('SESSION_EXPIRED', 'Refresh to reconnect.', 401);
+    const existing = this.online.get(sessionId);
+    if (existing?.size || this.connecting.has(sessionId)) throw new AppError('SEAT_IN_USE', 'This browser session is connected in another tab. Close it, then reconnect here.', 409);
+    this.connecting.add(sessionId);
+    // Cleanup happens before marking this participant online, so missed grace periods are respected.
+    try {
+      await this.transact(() => {});
+      this.online.set(sessionId, new Set([connectionId]));
+      await this.transact(() => {
+        const roomId = this.state.sessions[sessionId]?.roomId;
+        const room = roomId ? this.state.rooms[roomId] : undefined;
+        const player = room?.players.find(p => p.sessionId === sessionId);
+        if (player) { player.disconnectedAt = null; room!.revision++; }
+      });
+    } catch (e) { this.online.delete(sessionId); throw e; }
+    finally { this.connecting.delete(sessionId); }
+  }
+  async disconnect(sessionId: string, connectionId: string) {
+    const set = this.online.get(sessionId);
+    if (!set?.delete(connectionId)) return;
+    if (set.size === 0) this.online.delete(sessionId);
+    await this.transact(() => {
+      const id = this.state.sessions[sessionId]?.roomId;
+      const room = id ? this.state.rooms[id] : undefined;
+      const player = room?.players.find(p => p.sessionId === sessionId);
+      if (player) { player.disconnectedAt = this.clock(); room!.revision++; }
+    });
+  }
+}
