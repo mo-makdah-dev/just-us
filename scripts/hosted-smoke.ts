@@ -33,8 +33,7 @@ async function register(page: Page, nickname: string) {
 }
 async function deploy() {
   await new Promise<void>((resolve, reject) => {
-    const executable = join(homedir(), 'AppData/Local/Microsoft/WinGet/Links/render.exe');
-    const child = spawn(executable, ['deploys', 'create', state.service, '--wait', '--output', 'json', '--confirm'], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, RENDER_CLI_DISABLE_ANALYTICS: '1' } });
+    const child = spawn(process.execPath, ['--import', 'tsx', 'scripts/cloud.ts', 'deploy'], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, RENDER_CLI_DISABLE_ANALYTICS: '1' } });
     let output = ''; child.stdout.on('data', value => { output += value; }); child.stderr.on('data', value => { output += value; });
     child.on('error', reject); child.on('exit', code => code === 0 ? resolve() : reject(new Error(`Render redeploy failed (${code}): ${output.slice(-1000)}`)));
   });
@@ -63,6 +62,7 @@ try {
   await a.getByRole('button', { name: 'Create our little room' }).click();
   await expect(a.getByText('Room connected', { exact: true })).toBeVisible();
   await a.getByRole('button', { name: 'New membership code', exact: true }).click();
+  await expect(a.getByLabel('Membership code', { exact: true })).toHaveValue(/^[A-Z2-9]{10}$/);
   const code = await a.getByLabel('Membership code', { exact: true }).inputValue();
   const roomId = await a.evaluate(async () => (await (await fetch('/api/session')).json()).data.room.id);
   await b.getByRole('button', { name: /Back to our little space/ }).click();
@@ -75,6 +75,8 @@ try {
   await expect(b.locator('.room-seat-1 .custom-avatar')).toBeVisible();
   await a.getByRole('button', { name: 'sunset room theme', exact: true }).click();
   await expect(b.locator('.room-interior.theme-sunset')).toBeVisible();
+  await a.getByLabel('Your message', { exact: true }).fill('A hello worth keeping'); await a.getByRole('button', { name: 'Send message', exact: true }).click();
+  await expect(b.getByText('A hello worth keeping', { exact: true })).toBeVisible();
   await c.goto(url); await c.getByRole('button', { name: 'Join a room', exact: true }).click();
   await c.getByLabel('What should we call you?').fill('Third'); await c.getByLabel('Room code or invite link').fill(code);
   await c.getByRole('button', { name: 'Join as a visitor' }).click();
@@ -95,6 +97,7 @@ try {
   await a.getByLabel('Your message', { exact: true }).fill('Hello from the saved room'); await a.getByRole('button', { name: 'Send message', exact: true }).click();
   await expect(b.getByText('Hello from the saved room', { exact: true })).toBeVisible();
   await expect(b.locator('.room-interior.theme-sunset')).toBeVisible();
+  await expect(b.getByText('A hello worth keeping', { exact: true })).toBeVisible();
   const profile = await a.evaluate(async () => (await (await fetch('/api/session')).json()).data.account);
   expect(profile.username).toBe(accounts.get(a)); expect(profile.avatarDesign.pixels[1]).toBe(1);
   await expect(a.locator('.room-name').filter({ hasText: 'Sunshine' })).toBeVisible();

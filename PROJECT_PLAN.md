@@ -535,4 +535,3 @@ Official sources checked October 16, 2026; provider prices and policies may chan
 - [CIPO copyright basics](https://www.ised-isde.canada.ca/site/canadian-intellectual-property-office/en/copyright-learn-basics/copyright-learn-basics-protect-your-original-works-learn-why-copyright-matters).
 - [USPTO trademark/patent/copyright comparison](https://www.uspto.gov/trademarks/basics/trademark-patent-copyright).
 - [Canadian CONNECT FOUR trademark record](https://ised-isde.canada.ca/cipo/trademark-search/431855).
-

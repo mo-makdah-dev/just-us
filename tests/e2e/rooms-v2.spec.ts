@@ -47,6 +47,7 @@ test('saved rooms, accepted friend invites, four seats, private chat and guest m
     await b.locator('.saved-room-card').filter({ hasText: 'Our Sunday room' }).getByRole('button', { name: 'Enter room', exact: true }).click();
     await expect(b.getByText('Members remember this', { exact: true })).toBeVisible();
     await a.getByRole('button', { name: 'New membership code', exact: true }).click();
+    await expect(a.getByLabel('Membership code', { exact: true })).toHaveValue(/^[A-Z2-9]{10}$/);
     const membership = await a.getByLabel('Membership code', { exact: true }).inputValue();
     await fallback.goto(`/#invite=${membership}`); await fallback.getByLabel('What should we call you?').fill('Guest two');
     await expect(fallback.getByRole('button', { name: 'Sign in for saved membership & chat →' })).toBeVisible();

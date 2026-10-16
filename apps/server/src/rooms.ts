@@ -92,7 +92,7 @@ export class Rooms {
   private removeRoom(room: Room) {
     for (const p of room.players) { const session = this.state.sessions[p.sessionId]; if (session?.roomId === room.id) session.roomId = null; }
     delete this.state.rooms[room.id];
-    for (const [id, receipt] of Object.entries(this.state.receipts)) if ((receipt.result as { room?: { id?: string } } | null)?.room?.id === room.id) delete this.state.receipts[id];
+    for (const receipt of Object.values(this.state.receipts)) if ((receipt.result as { room?: { id?: string } } | null)?.room?.id === room.id) receipt.result = { room: null };
     for (const [id, invite] of Object.entries(this.state.roomRequests)) if (invite.roomId === room.id) delete this.state.roomRequests[id];
   }
   private cleanup() {
@@ -108,6 +108,7 @@ export class Rooms {
       {
         const removed = room.players.filter(p => !this.isOnline(p) && p.disconnectedAt !== null && p.disconnectedAt + policy.grace <= now);
         for (const p of removed) {
+          this.retireRoomReceipts(p.sessionId, room.id);
           this.state.sessions[p.sessionId] && (this.state.sessions[p.sessionId].roomId = null);
           room.players = room.players.filter(x => x.id !== p.id);
           room.revision++;
@@ -434,11 +435,15 @@ export class Rooms {
     const session = this.state.sessions[sessionId];
     const room = session?.roomId ? this.state.rooms[session.roomId] : undefined;
     if (room) {
+      this.retireRoomReceipts(sessionId, room.id);
       room.players = room.players.filter(p => p.sessionId !== sessionId); room.revision++;
       if (!room.ownerAccountId && !room.players.some(p => p.id === room.ownerId)) room.ownerId = room.players[0]?.id || '';
       if (!room.players.some(p => this.isOnline(p))) room.emptySince ??= this.clock();
     }
     if (session) session.roomId = null;
+  }
+  private retireRoomReceipts(sessionId: string, roomId: string) {
+    for (const [key, receipt] of Object.entries(this.state.receipts)) if (key.startsWith(`${sessionId}:`) && (receipt.result as { room?: { id?: string } } | null)?.room?.id === roomId) receipt.result = { room: null };
   }
   private enter(room: Room, sessionId: string, nickname: string, avatar: typeof AVATARS[number], permanent = false) {
     const account = this.view(sessionId).account;
@@ -605,6 +610,7 @@ export class Rooms {
           if (player?.sessionId === sessionId || accountId === room.ownerAccountId) throw new AppError('OWNER_REQUIRED', 'The owner cannot be removed. Delete the room instead.');
           if (!player && (!accountId || !room.members.includes(accountId))) throw new AppError('NOT_FOUND', 'That person is no longer in the room.');
           if (accountId) { room.members = room.members.filter(id => id !== accountId); if (!room.banned.includes(accountId)) room.banned.push(accountId); }
+          if (accountId) for (const [id, session] of Object.entries(this.state.sessions)) if (session.accountId === accountId) this.retireRoomReceipts(id, room.id);
           for (const p of [...room.players]) if (p === player || (accountId && this.state.sessions[p.sessionId]?.accountId === accountId)) this.detach(p.sessionId);
           for (const [id, request] of Object.entries(this.state.roomRequests)) if (request.roomId === room.id && request.target === accountId) delete this.state.roomRequests[id];
         }

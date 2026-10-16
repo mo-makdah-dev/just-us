@@ -33,6 +33,8 @@ The application callback and Google's callback are **different**: Google returns
 
 ## Verification status
 
+Rooms v2 keeps memberships separate from visits. Signing out makes the current seat a visitor and removes chat access. Deleting an account deletes its owned saved rooms, removes memberships/invitations and anonymizes authored messages in other surviving rooms. See [ROOMS_V2_RELEASE.md](ROOMS_V2_RELEASE.md) for the current rules; older seat-preservation notes above apply only where a surviving room remains.
+
 Username signup/signin, profile persistence, guest-seat continuity, logout, deletion, session rotation, access isolation, and callback rejection are tested locally. The Google SDK flow is tested with mocked provider responses. **Live Google consent and hosted PostgreSQL are not verified**, because external credentials/projects have not been connected.
 
 No payment integration, subscription, Facebook, or game has been added. Guest and account game catalogues are future options; the page labels the additional games as coming soon.

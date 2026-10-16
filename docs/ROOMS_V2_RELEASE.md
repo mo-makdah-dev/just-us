@@ -25,3 +25,15 @@ The cloud deployment command now writes a consistent encrypted pre-deploy snapsh
 The local server suite covers legacy migration, guest absolute/empty expiry and downtime, four-seat admission, invitation races, secret-free visitor projections, guest membership fallback, durable room return, targeted friend consent, removal/re-entry denial, chat privacy/retention, account deletion, provider auth and PostgreSQL handover. Compiled browser scenarios cover desktop/phone/tablet, four independent participants, saved-room switching/inbox acceptance, one-use membership fallback, guest chat gating, private labels, removal, reconnect and automated WCAG AA checks.
 
 Hosted publication and its final smoke test are recorded after the controlled migration below. Actual phones and different networks still need your testing.
+
+## Hosted verification
+
+- The release was published to the existing Render Free URL, with an encrypted pre-deploy snapshot and a transactional version-three migration snapshot.
+- Live PostgreSQL reports version 4. Pre-upgrade account identities, password/recovery hashes and provider bindings were compared and retained.
+- TLS hostname/certificate verification, actual production-table RLS/browser-role denial and isolated snapshot export/restore pass against Supabase.
+- Independent HTTPS desktop/phone accounts accepted a special relationship, privately named each other, edited artwork and redeemed a single-use membership code.
+- Saved memberships, room identity/seats, a chat message/history, saved artwork, pet names and shared theme survived a real Render redeploy. Synthetic accounts and their test room were removed afterward.
+- The final permission audit retires cached room/chat acknowledgement snapshots on departure, removal or deletion. Retried commands cannot expose revoked cached room data or recreate a room during the deduplication window.
+- Local coverage includes 65 server/unit/integration cases and nine compiled browser scenarios; one DPAPI-specific case is Windows-only. GitHub's Linux build/audit/test/browser checks are part of publication.
+
+The site remains at https://just-us-c7ee609b.onrender.com. Refresh existing tabs for the new interface. No additional provider setup is required for this release. Google login remains optional configuration, and real devices/networks still need your testing.

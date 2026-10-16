@@ -54,4 +54,3 @@ This is a small private pilot: capped sessions/rooms, one server, aggregate pers
 Socket.IO uses WebSocket transport only to simplify one-origin routing. Networks that block WebSockets will not receive a polling fallback in this phase; the UI reports reconnecting. Adding fallback requires explicit hosting/routing and browser tests.
 
 There are no games yet, so turn/outcome/hidden-answer tests begin with the first game. Phase 1 tests projection boundaries and room action authority; it does not claim to test future game secrets.
-

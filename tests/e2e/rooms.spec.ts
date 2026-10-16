@@ -32,7 +32,7 @@ test('desktop and phone join independently, refresh, recover, and close the shar
   const code = await a.getByTestId('room-code').inputValue();
   await b.goto('/'); await b.getByRole('button', { name: 'Join a room', exact: true }).click();
   await b.getByLabel('What should we call you?').fill('Sam'); await b.getByLabel('Room code or invite link').fill(code);
-  
+
   await b.getByRole('button', { name: 'Join as a visitor' }).click();
   await expect(a.getByRole('heading', { name: 'Good company, found.' })).toBeVisible();
   await expect(b.getByRole('heading', { name: 'Good company, found.' })).toBeVisible();

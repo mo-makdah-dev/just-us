@@ -2,6 +2,8 @@
 
 Verified October 16, 2026.
 
+**Current update: [Rooms v2](ROOMS_V2_RELEASE.md).** Four occupants, one-hour/five-empty-minute guest rooms, persistent account rooms, one-use membership/visitor codes, a friend-invitation inbox and signed-in room chat are now implemented. The original two-person verification below is historical evidence; v2 includes its own migration and hosted checks.
+
 **Website:** https://just-us-c7ee609b.onrender.com
 
 **Private source:** https://github.com/mo-makdah-dev/just-us

@@ -140,3 +140,13 @@ it('upgrades an existing signed-in visitor to membership without requiring an ex
   await t.join(b.sessionId, code); expect(t.rooms.directory(b.sessionId).rooms).toHaveLength(1);
   expect(t.rooms.view(a.sessionId).room!.players).toHaveLength(4);
 });
+it('redacts old acknowledgement snapshots after removal instead of leaking revoked room or chat data', async () => {
+  const t = await setup(); const a = await t.account(), b = await t.account(); await t.create(a.sessionId); await t.command(a.sessionId, 'memberInvite');
+  await t.join(b.sessionId, t.rooms.view(a.sessionId).room!.memberCode);
+  const room = t.rooms.view(b.sessionId).room!;
+  const message = { type: 'chat', roomId: room.id, expectedRevision: room.revision, commandId: randomUUID(), text: 'Private earlier message' };
+  await t.rooms.command(b.sessionId, message);
+  await t.command(a.sessionId, 'remove', { targetId: t.rooms.view(b.sessionId).account!.id });
+  expect(await t.rooms.command(b.sessionId, message)).toEqual({ room: null });
+  await expect(t.rooms.command(b.sessionId, { ...message, commandId: randomUUID() })).rejects.toMatchObject({ code: 'NOT_MEMBER' });
+});

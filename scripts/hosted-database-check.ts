@@ -22,6 +22,16 @@ const scoped = () => {
 };
 let store: Storage | undefined;
 try {
+  if (process.argv.includes('--verify-v4-migration')) {
+    const current = (await admin.query('SELECT payload FROM public.just_us_state WHERE id=1')).rows[0]?.payload;
+    const before = (await admin.query('SELECT payload FROM public.just_us_backups WHERE version=3')).rows[0]?.payload;
+    assert.equal(current?.version, 4); assert.equal(before?.version, 3);
+    for (const [id, account] of Object.entries(before.accounts) as Array<[string, any]>) {
+      assert.ok(current.accounts[id], 'A pre-upgrade account must remain present.');
+      for (const field of ['passwordHash', 'recoveryHash', 'googleSubject']) assert.deepEqual(current.accounts[id][field], account[field]);
+    }
+    console.log('PASS: version-four migration retained pre-upgrade account identities and credential hashes, with its version-three snapshot available.');
+  }
   await admin.query(`CREATE SCHEMA "${schema}"`);
   store = await postgresStorageFromPool(scoped());
   const value = { version: 3, verification: randomBytes(8).toString('hex') };
