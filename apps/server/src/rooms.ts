@@ -9,7 +9,7 @@ export const policy = { grace: 5 * minute, absent: 5 * minute, idle: 60 * minute
 const identity = z.object({ nickname: z.string().trim().min(1).max(24).refine(s => !/[\p{Cc}\p{Cf}]/u.test(s), 'Use a visible nickname.'), avatar: z.enum(AVATARS) });
 export const createSchema = identity.extend({ commandId: z.string().uuid() }).strict();
 export const joinSchema = createSchema.extend({ invitation: z.string().trim().min(1).max(100), asVisitor: z.boolean().optional() }).strict();
-export const commandSchema = z.object({ commandId: z.string().uuid(), roomId: z.string().regex(/^[a-f0-9]{32}$/), expectedRevision: z.number().int().nonnegative(), type: z.enum(['keepAlive', 'leave', 'close', 'regenerateInvite', 'reopen', 'theme', 'memberInvite', 'remove', 'rename', 'chat', 'saveRoom']), theme: z.enum(['sage', 'sunset', 'midnight']).optional(), targetId: z.string().regex(/^[a-f0-9]{32}$/).optional(), name: z.string().trim().min(1).max(40).refine(s => !/[\p{Cc}\p{Cf}]/u.test(s)).optional(), text: z.string().trim().min(1).max(1000).refine(s => !/[\u0000-\u0008\u000b-\u001f\u007f]/u.test(s)).optional() }).strict();
+export const commandSchema = z.object({ commandId: z.string().uuid(), roomId: z.string().regex(/^[a-f0-9]{32}$/), expectedRevision: z.number().int().nonnegative(), type: z.enum(['keepAlive', 'leave', 'close', 'regenerateInvite', 'reopen', 'theme', 'memberInvite', 'remove', 'rename', 'chat', 'saveRoom', 'revokeCodes', 'deleteMessage', 'clearChat']), messageId: z.string().regex(/^[a-f0-9]{32}$/).optional(), theme: z.enum(['sage', 'sunset', 'midnight']).optional(), targetId: z.string().regex(/^[a-f0-9]{32}$/).optional(), name: z.string().trim().min(1).max(40).refine(s => !/[\p{Cc}\p{Cf}]/u.test(s)).optional(), text: z.string().trim().min(1).max(1000).refine(s => !/[\u0000-\u0008\u000b-\u001f\u007f]/u.test(s)).optional() }).strict();
 const designSchema = z.object({ version: z.literal(1), pixels: z.array(z.number().int().min(0).max(PIXEL_COLORS.length - 1)).length(576) }).strict().nullable();
 
 const memberSchema = z.object({ id: z.string(), sessionId: z.string(), nickname: z.string(), avatar: z.enum(AVATARS), avatarDesign: designSchema.default(null), seat: z.number(), disconnectedAt: z.number().nullable(), joinedAt: z.number().default(0) });
@@ -158,7 +158,12 @@ export class Rooms {
       const others = Object.entries(this.state.sessions).filter(([id, s]) => id !== sessionId && s.accountId === accountId && s.roomId && this.state.rooms[s.roomId]);
       for (const [otherId, other] of others) {
         if (old.roomId && old.roomId !== other.roomId) throw new AppError('ROOM_CONFLICT', 'This account already has another room. Leave that room before signing in here.', 409);
-        if (this.online.get(otherId)?.size) throw new AppError('ACCOUNT_IN_USE', 'This account is in a room on another browser. Leave there before signing in here.', 409);
+        if (this.online.get(otherId)?.size) {
+          if (old.roomId) throw new AppError('ACCOUNT_IN_USE', 'This account is in a room on another browser. Leave there before signing in here.', 409);
+          // Signing in for account management does not take over an active seat.
+          // The person can explicitly end other sessions from Account security.
+          continue;
+        }
         if (!old.roomId) {
           old.roomId = other.roomId;
           const member = this.state.rooms[other.roomId!].players.find(p => p.sessionId === otherId);
@@ -171,6 +176,7 @@ export class Rooms {
     const newId = hash(token);
     this.state.sessions[newId] = { ...old, accountId, csrf: random(), expiresAt: this.clock() + policy.session, authenticatedAt: accountId ? this.clock() : null };
     const room = old.roomId ? this.state.rooms[old.roomId] : undefined;
+    if (room && accountId) this.assertRoomAccess(room, accountId);
     const member = room?.players.find(p => p.sessionId === sessionId);
     if (member) {
       member.sessionId = newId; member.disconnectedAt = this.clock();
@@ -229,6 +235,25 @@ export class Rooms {
     });
   }
   async logout(sessionId: string) { return this.transact(() => this.rotateSession(sessionId, null)); }
+  private requireRecentAccount(sessionId: string) {
+    const account = this.requireAccount(sessionId);
+    const at = this.state.sessions[sessionId].authenticatedAt;
+    if (!at || at + 10 * minute < this.clock()) throw new AppError('REAUTHENTICATE', 'For this action, sign out and sign in again first.', 403);
+    return account;
+  }
+  async signOutOthers(sessionId: string) {
+    return this.transact(() => { const account = this.requireRecentAccount(sessionId); this.revokeOtherSessions(account.id, sessionId); return this.rotateSession(sessionId, account.id); });
+  }
+  exportAccount(sessionId: string) {
+    const account = this.requireRecentAccount(sessionId);
+    return {
+      format: 'just-us-account-export', version: 1, exportedAt: new Date(this.clock()).toISOString(),
+      profile: { id: account.id, username: account.username, nickname: account.nickname, avatar: account.avatar, avatarDesign: account.avatarDesign, categories: account.categories, provider: account.provider, createdAt: account.createdAt },
+      people: this.people(sessionId).connections, blockedAccounts: this.people(sessionId).blocked,
+      rooms: this.directory(sessionId).rooms,
+      authoredMessages: Object.values(this.state.rooms).flatMap(room => room.messages.filter(m => m.accountId === account.id && m.createdAt + 30 * 86400000 > this.clock()).map(m => ({ roomId: room.id, roomName: room.name, id: m.id, text: m.text, createdAt: m.createdAt }))),
+    };
+  }
   private requireAccount(sessionId: string) {
     const account = this.view(sessionId).account;
     if (!account) throw new AppError('SIGN_IN_REQUIRED', 'Sign in to use your saved profile and people.', 403);
@@ -236,12 +261,7 @@ export class Rooms {
   }
   private revokeOtherSessions(accountId: string, except: string) {
     for (const [id, session] of Object.entries(this.state.sessions)) if (id !== except && session.accountId === accountId) {
-      const room = session.roomId ? this.state.rooms[session.roomId] : undefined;
-      if (room) {
-        room.players = room.players.filter(p => p.sessionId !== id);
-        if (!room.players.length) this.removeRoom(room);
-        else { room.ownerId = room.players[0].id; room.revision++; }
-      }
+      this.detach(id);
       delete this.state.sessions[id];
       for (const key of Object.keys(this.state.receipts)) if (key.startsWith(`${id}:`)) delete this.state.receipts[key];
     }
@@ -263,9 +283,11 @@ export class Rooms {
   async recoveryKey(sessionId: string, raw: unknown) {
     const input = z.object({ currentPassword: z.string().max(128) }).strict().parse(raw);
     const account = this.requireAccount(sessionId);
-    if (!account.passwordHash || !await passwordMatches(input.currentPassword, account.passwordHash)) throw new AppError('INVALID_LOGIN', 'Your current password is incorrect.', 401);
+    const previousHash = account.passwordHash;
+    if (!previousHash || !await passwordMatches(input.currentPassword, previousHash)) throw new AppError('INVALID_LOGIN', 'Your current password is incorrect.', 401);
     return this.transact(() => {
       const current = this.requireAccount(sessionId);
+      if (current.passwordHash !== previousHash) throw new AppError('CONFLICT', 'Your password changed. Sign in again.', 409);
       const recoveryCode = randomBytes(24).toString('hex'); current.recoveryHash = hash(recoveryCode);
       return { recoveryCode };
     });
@@ -300,6 +322,9 @@ export class Rooms {
     };
   }
   private blocked(a: string, b: string) { return this.state.blocks.some(row => (row.owner === a && row.other === b) || (row.owner === b && row.other === a)); }
+  private assertRoomAccess(room: Room, accountId: string) {
+    if (room.banned.includes(accountId) || room.members.some(id => id !== accountId && this.blocked(accountId, id)) || room.players.some(p => { const peer = this.state.sessions[p.sessionId]?.accountId; return peer && peer !== accountId && this.blocked(accountId, peer); })) throw new AppError('ROOM_UNAVAILABLE', 'That room is unavailable for this account. Leave this visit before signing in, or use another room.', 403);
+  }
   previewConnection(sessionId: string, token: string) {
     const account = this.requireAccount(sessionId);
     const invite = Object.values(this.state.invitations).find(i => i.tokenHash === hash(token) && i.expiresAt > this.clock() && !i.acceptedBy);
@@ -317,6 +342,7 @@ export class Rooms {
       z.object({ type: z.literal('label'), id, petName: label.or(z.literal('')) }).strict(),
       z.object({ type: z.literal('categories'), friends: label, special: label }).strict(),
       z.object({ type: z.literal('block'), id }).strict(), z.object({ type: z.literal('unblock'), id }).strict(),
+      z.object({ type: z.literal('demote'), id }).strict(),
     ]).parse(raw);
     return this.transact(() => {
       const account = this.requireAccount(sessionId);
@@ -352,10 +378,26 @@ export class Rooms {
         if (input.type === 'remove') delete this.state.connections[input.id];
         else connection.labels[account.id] = input.petName;
       }
+      if (input.type === 'demote') {
+        const connection = this.state.connections[input.id];
+        if (!connection || ![connection.a, connection.b].includes(account.id)) throw new AppError('NOT_FOUND', 'Connection not found.', 404);
+        connection.kind = 'friend';
+      }
       if (input.type === 'block') {
         if (input.id === account.id || !this.state.accounts[input.id]) throw new AppError('NOT_FOUND', 'Person not found.', 404);
         if (!this.state.blocks.some(b => b.owner === account.id && b.other === input.id)) this.state.blocks.push({ owner: account.id, other: input.id });
         for (const [id, c] of Object.entries(this.state.connections)) if ([c.a, c.b].includes(account.id) && [c.a, c.b].includes(input.id)) delete this.state.connections[id];
+        for (const [id, invite] of Object.entries(this.state.roomRequests)) if ((invite.inviter === account.id && invite.target === input.id) || (invite.inviter === input.id && invite.target === account.id)) delete this.state.roomRequests[id];
+        // A block revokes membership between these accounts' owned rooms. Other
+        // shared rooms retain their owner; the blocker leaves its membership.
+        for (const room of Object.values(this.state.rooms)) {
+          const revoke = room.ownerAccountId === account.id ? input.id : room.members.includes(input.id) ? account.id : null;
+          if (revoke && revoke !== room.ownerAccountId) {
+            room.members = room.members.filter(id => id !== revoke);
+            for (const [id, s] of Object.entries(this.state.sessions)) if (s.accountId === revoke) { this.retireRoomReceipts(id, room.id); if (s.roomId === room.id) this.detach(id); }
+            room.revision++;
+          }
+        }
         // Leave any shared room; blocking never secretly gives control over the other person's seat.
         for (const [id, s] of Object.entries(this.state.sessions)) if (s.accountId === account.id && s.roomId) {
           const room = this.state.rooms[s.roomId];
@@ -426,6 +468,7 @@ export class Rooms {
       canReopen: room.players.length < 4 && !room.admissionsOpen, games: [], createdAt: room.createdAt, theme: room.theme,
       saved: !!room.ownerAccountId, name: room.name, memberCode: owner ? room.memberCode : '', capacity: 4,
       members: member ? room.members.flatMap(id => { const a = this.state.accounts[id]; return a ? [{ accountId: id, nickname: a.nickname, avatar: a.avatar, owner: id === room.ownerAccountId }] : []; }) : [],
+      pendingInvitations: owner ? Object.values(this.state.roomRequests).filter(i => i.roomId === room.id && i.expiresAt > this.clock()).map(i => ({ id: i.id, nickname: this.state.accounts[i.target]?.nickname || 'Former member', expiresAt: i.expiresAt })) : [],
       chatEnabled: !!viewer,
       messages: viewer && visit ? room.messages.filter(m => member || m.createdAt >= visit.joinedAt).map(m => ({ id: m.id, nickname: m.nickname, text: m.text, createdAt: m.createdAt, isYou: m.accountId === viewer })) : [],
     };
@@ -448,7 +491,7 @@ export class Rooms {
   private enter(room: Room, sessionId: string, nickname: string, avatar: typeof AVATARS[number], permanent = false) {
     const account = this.view(sessionId).account;
     const owner = !!account && room.ownerAccountId === account.id;
-    if (account && !owner && (room.banned.includes(account.id) || (room.ownerAccountId && this.blocked(account.id, room.ownerAccountId)) || room.players.some(p => { const peer = this.state.sessions[p.sessionId]?.accountId; return peer && this.blocked(account.id, peer); }))) throw new AppError('ROOM_UNAVAILABLE', 'That room is unavailable.', 403);
+    if (account) this.assertRoomAccess(room, account.id);
     if (room.players.some(p => p.sessionId === sessionId)) {
       if (permanent && account && !room.members.includes(account.id)) {
         if (room.members.length >= 4) throw new AppError('MEMBER_LIMIT', 'All four saved memberships are taken.');
@@ -499,9 +542,14 @@ export class Rooms {
     };
   }
   async savedAction(sessionId: string, raw: unknown): Promise<CommandResult> {
-    const input = z.object({ commandId: z.string().uuid(), type: z.enum(['enter', 'delete', 'leaveMembership', 'inviteFriend', 'acceptInvite', 'declineInvite']), roomId: z.string().regex(/^[a-f0-9]{32}$/).optional(), targetId: z.string().regex(/^[a-f0-9]{32}$/).optional() }).strict().parse(raw);
+    const input = z.object({ commandId: z.string().uuid(), type: z.enum(['enter', 'delete', 'leaveMembership', 'inviteFriend', 'acceptInvite', 'declineInvite', 'cancelInvite']), roomId: z.string().regex(/^[a-f0-9]{32}$/).optional(), targetId: z.string().regex(/^[a-f0-9]{32}$/).optional() }).strict().parse(raw);
     return this.transact(() => this.once(sessionId, input.commandId, input, () => {
       const account = this.requireAccount(sessionId);
+      if (input.type === 'cancelInvite') {
+        const invite = input.targetId ? this.state.roomRequests[input.targetId] : undefined;
+        if (!invite || this.state.rooms[invite.roomId]?.ownerAccountId !== account.id) throw new AppError('NOT_FOUND', 'Invitation not found.', 404);
+        delete this.state.roomRequests[invite.id]; return this.current(sessionId);
+      }
       if (input.type === 'acceptInvite' || input.type === 'declineInvite') {
         const invite = input.targetId ? this.state.roomRequests[input.targetId] : undefined;
         const room = invite ? this.state.rooms[invite.roomId] : undefined;
@@ -551,7 +599,7 @@ export class Rooms {
       this.checkAccountRoom(sessionId);
       if (Object.keys(this.state.rooms).length >= 1000) throw new AppError('BUSY', 'No new rooms are available. Try again shortly.', 503);
       let code = roomCode();
-      while (Object.values(this.state.rooms).some(r => r.code === code)) code = roomCode();
+      while (Object.values(this.state.rooms).some(r => (r.code === code || r.memberCode === code))) code = roomCode();
       const invitation = random();
       const id = random();
       const player = { id: random(), sessionId, nickname: session.account?.nickname || input.nickname, avatar: session.account?.avatar || 'moss' as const, avatarDesign: session.account?.avatarDesign || null, seat: 1, disconnectedAt: this.clock(), joinedAt: this.clock() };
@@ -586,7 +634,7 @@ export class Rooms {
       if (input.type !== 'chat' && room.revision !== input.expectedRevision) throw new AppError('STALE', 'The room changed. We have refreshed it; please try again.', 409);
       const owner = this.owns(room, sessionId);
       let invitation: string | undefined;
-      if (['close', 'regenerateInvite', 'reopen', 'theme', 'memberInvite', 'remove', 'rename', 'saveRoom'].includes(input.type) && !owner) throw new AppError('OWNER_ONLY', 'Only the room creator can change the room settings.', 403);
+      if (['close', 'regenerateInvite', 'reopen', 'theme', 'memberInvite', 'remove', 'rename', 'saveRoom', 'revokeCodes', 'clearChat'].includes(input.type) && !owner) throw new AppError('OWNER_ONLY', 'Only the room creator can change the room settings.', 403);
       if (input.type === 'close') this.removeRoom(room);
       else if (input.type === 'leave') this.detach(sessionId);
       else {
@@ -595,6 +643,18 @@ export class Rooms {
           if (!input.text) throw new AppError('INVALID_INPUT', 'Write a message first.');
           room.messages.push({ id: random(), accountId: account.id, nickname: account.nickname, text: input.text, createdAt: this.clock() });
           room.messages = room.messages.slice(-200);
+        }
+        if (input.type === 'revokeCodes') { room.code = ''; room.invitationHash = ''; room.memberCode = ''; room.admissionsOpen = false; }
+        if (input.type === 'clearChat' || input.type === 'deleteMessage') {
+          const account = this.requireAccount(sessionId);
+          if (input.type === 'deleteMessage') {
+            const message = room.messages.find(m => m.id === input.messageId);
+            const visible = this.project(room, sessionId).messages.some(m => m.id === input.messageId);
+            if (!message || !visible) throw new AppError('NOT_FOUND', 'Message not found.', 404);
+            if (!owner && message.accountId !== account.id) throw new AppError('FORBIDDEN', 'You can only delete your own messages.', 403);
+          }
+          room.messages = input.type === 'clearChat' ? [] : room.messages.filter(m => m.id !== input.messageId);
+          for (const receipt of Object.values(this.state.receipts)) if ((receipt.result as { room?: { id?: string } } | null)?.room?.id === room.id) receipt.result = { room: null };
         }
         if (input.type === 'saveRoom') { const account = this.requireAccount(sessionId); room.ownerAccountId = account.id; if (!room.members.includes(account.id)) room.members.push(account.id); room.visitorUntil = this.clock() + 86400000; }
         if (input.type === 'rename') { if (!input.name || !room.ownerAccountId) throw new AppError('INVALID_INPUT', 'Saved rooms need a name.'); room.name = input.name; }
@@ -618,7 +678,7 @@ export class Rooms {
         if (['reopen', 'regenerateInvite'].includes(input.type) && room.players.length >= 4) throw new AppError('NOT_READY', 'All four seats are taken.');
         if (input.type === 'regenerateInvite' || input.type === 'reopen') {
           invitation = random(); room.invitationHash = hash(invitation);
-          do { room.code = roomCode(); } while (Object.values(this.state.rooms).some(r => r.id !== room.id && r.code === room.code));
+          do { room.code = roomCode(); } while (Object.values(this.state.rooms).some(r => (r.id !== room.id && r.code === room.code) || r.memberCode === room.code));
           room.admissionsOpen = true; room.visitorUntil = Math.min(this.clock() + 86400000, room.ownerAccountId ? Infinity : room.createdAt + policy.absolute);
         }
         room.lastActive = this.clock(); room.revision++;

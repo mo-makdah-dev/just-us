@@ -60,9 +60,13 @@ it('recovers an offline account seat but cannot hijack an active seat from a dif
   const created = await rooms.create(first.sessionId, { commandId: randomUUID(), nickname: 'Alex', avatar: 'moss' });
   await rooms.connect(first.sessionId, 'one');
   const second = await rooms.authenticate();
-  await expect(rooms.login(second.sessionId, { username: details.username, password: details.password })).rejects.toMatchObject({ code: 'ACCOUNT_IN_USE' });
+  const signed = await rooms.login(second.sessionId, { username: details.username, password: details.password });
+  expect(rooms.view(signed.sessionId).room).toBeNull();
+  expect(rooms.view(first.sessionId).room!.id).toBe(created.room!.id);
+  await expect(rooms.savedAction(signed.sessionId, { type: 'enter', roomId: created.room!.id, commandId: randomUUID() })).rejects.toMatchObject({ code: 'ACCOUNT_IN_USE' });
   await rooms.disconnect(first.sessionId, 'one');
-  const recovered = await rooms.login(second.sessionId, { username: details.username, password: details.password });
+  const third = await rooms.authenticate();
+  const recovered = await rooms.login(third.sessionId, { username: details.username, password: details.password });
   expect(rooms.view(recovered.sessionId).room!.id).toBe(created.room!.id);
   expect(rooms.view(first.sessionId).room).toBeNull();
 });

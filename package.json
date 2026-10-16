@@ -10,7 +10,7 @@
     "apps/*",
     "packages/*"
   ],
-  "description": "Private two-person rooms. Phase 1 foundation, without games.",
+  "description": "Private four-person rooms, accounts and chat. Games coming later.",
   "scripts": {
     "dev": "tsx apps/server/src/index.ts --dev",
     "cloud": "tsx scripts/cloud.ts",

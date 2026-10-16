@@ -150,3 +150,65 @@ it('redacts old acknowledgement snapshots after removal instead of leaking revok
   expect(await t.rooms.command(b.sessionId, message)).toEqual({ room: null });
   await expect(t.rooms.command(b.sessionId, { ...message, commandId: randomUUID() })).rejects.toMatchObject({ code: 'NOT_MEMBER' });
 });
+it('preserves an empty saved room and history when recovery revokes its only active session', async () => {
+  const t = await setup(); const a = await t.account(); const username = t.rooms.view(a.sessionId).account!.username!;
+  const created = await t.create(a.sessionId); await t.command(a.sessionId, 'chat', { text: 'Keep our history' });
+  const visitor = await t.guest(); const restored = await t.rooms.recover(visitor.sessionId, { username, recoveryCode: a.recoveryCode, password: 'new safe recovery password' });
+  expect(t.rooms.validSession(a.sessionId)).toBe(false); expect(t.rooms.directory(restored.sessionId).rooms.map(r => r.id)).toContain(created.room!.id);
+  await t.saved(restored.sessionId, 'enter', created.room!.id); expect(t.rooms.view(restored.sessionId).room!.messages[0].text).toBe('Keep our history');
+});
+it('revokes other sessions without deleting their saved room and requires recent sign-in', async () => {
+  const t = await setup(); const a = await t.account(); const g = await t.guest();
+  const created = await t.create(a.sessionId);
+  const b = await t.rooms.login(g.sessionId, { username: t.rooms.view(a.sessionId).account!.username, password: 'a unique rooms password' });
+  const fresh = await t.rooms.signOutOthers(b.sessionId);
+  expect(t.rooms.validSession(a.sessionId)).toBe(false); expect(t.rooms.validSession(b.sessionId)).toBe(false); expect(t.rooms.directory(fresh.sessionId).rooms[0].id).toBe(created.room!.id);
+  t.advance(600001); await expect(t.rooms.signOutOthers(fresh.sessionId)).rejects.toMatchObject({ code: 'REAUTHENTICATE' });
+});
+it('refuses a removed account signing into an anonymous visitor seat without losing that seat', async () => {
+  const t = await setup(); const a = await t.account(), b = await t.account(); await t.create(a.sessionId); await t.command(a.sessionId, 'memberInvite'); await t.join(b.sessionId, t.rooms.view(a.sessionId).room!.memberCode);
+  const account = t.rooms.view(b.sessionId).account!; await t.command(a.sessionId, 'remove', { targetId: account.id });
+  const guest = await t.guest(); await t.join(guest.sessionId, t.rooms.view(a.sessionId).room!.code);
+  await expect(t.rooms.login(guest.sessionId, { username: account.username, password: 'a unique rooms password' })).rejects.toMatchObject({ code: 'ROOM_UNAVAILABLE' });
+  expect(t.rooms.view(guest.sessionId).account).toBeNull(); expect(t.rooms.view(guest.sessionId).room).not.toBeNull();
+});
+it('blocking revokes offline membership and pending room invitations and cannot be bypassed at login', async () => {
+  const t = await setup(); const a = await t.account(), b = await t.account(); const room = await t.create(a.sessionId);
+  const invite = await t.rooms.peopleAction(a.sessionId, { type: 'invite', kind: 'friend' }); await t.rooms.peopleAction(b.sessionId, { type: 'accept', token: invite.token });
+  await t.saved(a.sessionId, 'inviteFriend', room.room!.id, t.rooms.view(b.sessionId).account!.id);
+  await t.command(a.sessionId, 'memberInvite'); await t.join(b.sessionId, t.rooms.view(a.sessionId).room!.memberCode); await t.command(b.sessionId, 'leave');
+  await t.rooms.peopleAction(a.sessionId, { type: 'block', id: t.rooms.view(b.sessionId).account!.id });
+  expect(t.rooms.directory(b.sessionId)).toEqual({ rooms: [], invitations: [] });
+  await expect(t.join(b.sessionId, t.rooms.view(a.sessionId).room!.code)).rejects.toMatchObject({ code: 'ROOM_UNAVAILABLE' });
+});
+it('allows special connections to become friends without losing either private label', async () => {
+  const t = await setup(); const a = await t.account(), b = await t.account(); const invite = await t.rooms.peopleAction(a.sessionId, { type: 'invite', kind: 'special' }); await t.rooms.peopleAction(b.sessionId, { type: 'accept', token: invite.token });
+  const id = t.rooms.people(a.sessionId).connections[0].id; await t.rooms.peopleAction(a.sessionId, { type: 'label', id, petName: 'Sunbeam' }); await t.rooms.peopleAction(b.sessionId, { type: 'demote', id });
+  expect(t.rooms.people(a.sessionId).connections[0]).toMatchObject({ kind: 'friend', petName: 'Sunbeam' }); expect(t.rooms.people(b.sessionId).connections[0].petName).toBe('');
+});
+it('revokes both code types and allows only the owner to cancel targeted invitations', async () => {
+  const t = await setup(); const a = await t.account(), b = await t.account(), c = await t.account(); const room = await t.create(a.sessionId); const visitor = room.room!.code;
+  await t.command(a.sessionId, 'memberInvite'); const member = t.rooms.view(a.sessionId).room!.memberCode; await t.command(a.sessionId, 'revokeCodes');
+  await expect(t.join(b.sessionId, visitor)).rejects.toMatchObject({ code: 'ROOM_UNAVAILABLE' }); await expect(t.join(b.sessionId, member)).rejects.toMatchObject({ code: 'ROOM_UNAVAILABLE' });
+  const invite = await t.rooms.peopleAction(a.sessionId, { type: 'invite', kind: 'friend' }); await t.rooms.peopleAction(b.sessionId, { type: 'accept', token: invite.token }); await t.saved(a.sessionId, 'inviteFriend', room.room!.id, t.rooms.view(b.sessionId).account!.id);
+  const id = t.rooms.view(a.sessionId).room!.pendingInvitations[0].id;
+  expect(t.rooms.view(a.sessionId).room!.pendingInvitations[0].nickname).toBe('Member');
+  await expect(t.saved(c.sessionId, 'cancelInvite', undefined, id)).rejects.toMatchObject({ code: 'NOT_FOUND' }); await t.saved(a.sessionId, 'cancelInvite', undefined, id);
+  await expect(t.saved(b.sessionId, 'acceptInvite', undefined, id)).rejects.toMatchObject({ code: 'INVITE_UNAVAILABLE' });
+});
+it('deletes authored messages, permits owner moderation and prevents cached content from reappearing', async () => {
+  const t = await setup(); const a = await t.account(), b = await t.account(); await t.create(a.sessionId); await t.join(b.sessionId, t.rooms.view(a.sessionId).room!.code);
+  await t.command(a.sessionId, 'chat', { text: 'Owner private note' }); const ownerMessage = t.rooms.view(b.sessionId).room!.messages[0].id;
+  await expect(t.command(b.sessionId, 'deleteMessage', { messageId: ownerMessage })).rejects.toMatchObject({ code: 'FORBIDDEN' });
+  const room = t.rooms.view(b.sessionId).room!; const payload = { commandId: randomUUID(), roomId: room.id, expectedRevision: room.revision, type: 'chat', text: 'Delete this note' }; await t.rooms.command(b.sessionId, payload);
+  const messageId = t.rooms.view(b.sessionId).room!.messages.at(-1)!.id; await t.command(b.sessionId, 'deleteMessage', { messageId });
+  expect(await t.rooms.command(b.sessionId, payload)).toEqual({ room: null }); expect(t.rooms.view(a.sessionId).room!.messages.map(m => m.text)).toEqual(['Owner private note']);
+  await expect(t.command(b.sessionId, 'clearChat')).rejects.toMatchObject({ code: 'OWNER_ONLY' }); await t.command(a.sessionId, 'clearChat'); expect(t.rooms.view(b.sessionId).room!.messages).toEqual([]);
+});
+it('exports only personal data without authentication secrets or other authors messages', async () => {
+  const t = await setup(); const a = await t.account(), b = await t.account(); await t.create(a.sessionId); await t.join(b.sessionId, t.rooms.view(a.sessionId).room!.code); await t.command(b.sessionId, 'chat', { text: 'Other author text' }); await t.command(a.sessionId, 'chat', { text: 'My own text' });
+  const result = t.rooms.exportAccount(a.sessionId); const serialized = JSON.stringify(result);
+  expect(result.authoredMessages.map(m => m.text)).toEqual(['My own text']); expect(serialized).not.toContain('Other author text');
+  for (const field of ['passwordHash', 'recoveryHash', 'googleSubject', 'csrf', 'memberCode', 'invitationHash']) expect(serialized).not.toContain(field);
+  const guest = await t.guest(); expect(() => t.rooms.exportAccount(guest.sessionId)).toThrow('Sign in'); t.advance(600001); expect(() => t.rooms.exportAccount(a.sessionId)).toThrow('sign out and sign in');
+});

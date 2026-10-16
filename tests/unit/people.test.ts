@@ -66,9 +66,8 @@ it('blocking removes a connection, leaves shared rooms and rejects future signed
   const created = await rooms.create(a.sessionId, { commandId: randomUUID(), nickname: 'alex', avatar: 'moss' });
   await rooms.join(b.sessionId, { commandId: randomUUID(), nickname: 'sam', avatar: 'moss', invitation: created.room!.code });
   await rooms.peopleAction(a.sessionId, { type: 'block', id: rooms.view(b.sessionId).account!.id });
-  expect(rooms.view(a.sessionId).room).toBeNull(); expect(rooms.people(a.sessionId).connections).toHaveLength(0);
+  expect(rooms.view(a.sessionId).room!.isOwner).toBe(true); expect(rooms.view(b.sessionId).room).toBeNull(); expect(rooms.people(a.sessionId).connections).toHaveLength(0);
   const another = await rooms.create(a.sessionId, { commandId: randomUUID(), nickname: 'alex', avatar: 'moss' });
-  await rooms.command(b.sessionId, { type: 'leave', commandId: randomUUID(), roomId: created.room!.id, expectedRevision: rooms.view(b.sessionId).room!.revision });
   await expect(rooms.join(b.sessionId, { commandId: randomUUID(), nickname: 'sam', avatar: 'moss', invitation: another.room!.code })).rejects.toMatchObject({ code: 'ROOM_UNAVAILABLE' });
 });
 it('accepts only bounded pixel designs and projects saved art into a room', async () => {

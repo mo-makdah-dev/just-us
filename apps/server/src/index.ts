@@ -31,6 +31,9 @@ const storage = process.env.DATABASE_URL
     } })
   : sqliteStorage(dbPath);
 const application = await createApplication(storage, { origin, production,
+  // The whole browser suite shares localhost; keep its synthetic accounts from
+  // spending one shared IP's production authentication budget. Never used live.
+  testAuthIpLimit: process.env.NODE_ENV === 'test' ? 200 : undefined,
   google: process.env.SUPABASE_URL && process.env.SUPABASE_PUBLISHABLE_KEY ? { url: process.env.SUPABASE_URL, key: process.env.SUPABASE_PUBLISHABLE_KEY } : undefined,
   trustProxy: Number(process.env.TRUST_PROXY || 0),
   frontend: process.argv.includes('--dev') ? undefined : resolve('dist/web'),

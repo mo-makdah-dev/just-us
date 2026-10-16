@@ -7,7 +7,7 @@ import type { Storage } from './storage.js';
 import { googleOAuth, type GoogleConfig } from './oauth.js';
 import { z } from 'zod';
 
-type Settings = { origin: string; production?: boolean; trustProxy?: number; frontend?: string; clock?: () => number; google?: GoogleConfig };
+type Settings = { origin: string; production?: boolean; trustProxy?: number; frontend?: string; clock?: () => number; google?: GoogleConfig; testAuthIpLimit?: number };
 export async function createApplication(storage: Storage, settings: Settings) {
   const oauth = googleOAuth(settings.google, settings.origin);
   const rooms = new Rooms(storage, settings.clock, oauth.configured);
@@ -106,11 +106,20 @@ export async function createApplication(storage: Storage, settings: Settings) {
     } catch (e) { next(e); }
   });
   app.use('/api/auth', (req, _res, next) => {
-    try { limit(`auth:${req.ip}`, 12, 600000); limit(`auth-session:${sessionFrom(req)}`, 12, 600000); next(); } catch (e) { next(e); }
+    try { limit(`auth:${req.ip}`, settings.production ? 12 : settings.testAuthIpLimit ?? 12, 600000); limit(`auth-session:${sessionFrom(req)}`, 12, 600000); next(); } catch (e) { next(e); }
   });
   app.post('/api/auth/signup', async (req, res) => authResult(res, await rooms.signup(sessionFrom(req), req.body)));
   app.post('/api/auth/login', async (req, res) => authResult(res, await rooms.login(sessionFrom(req), req.body)));
   app.post('/api/auth/logout', async (req, res) => authResult(res, await rooms.logout(sessionFrom(req))));
+  app.post('/api/auth/sign-out-others', async (req, res) => {
+    z.object({ confirm: z.literal(true) }).strict().parse(req.body);
+    authResult(res, await rooms.signOutOthers(sessionFrom(req)));
+  });
+  app.post('/api/account/export', async (req, res) => {
+    z.object({ confirm: z.literal(true) }).strict().parse(req.body);
+    limit(`export:${sessionFrom(req)}`, 3, 60000);
+    await rooms.settled(); res.json({ ok: true, data: rooms.exportAccount(sessionFrom(req)) });
+  });
   app.post('/api/auth/recover', async (req, res) => authResult(res, await rooms.recover(sessionFrom(req), req.body)));
   app.post('/api/auth/password', async (req, res) => authResult(res, await rooms.changePassword(sessionFrom(req), req.body)));
   app.post('/api/auth/recovery-key', async (req, res) => res.json({ ok: true, data: await rooms.recoveryKey(sessionFrom(req), req.body) }));

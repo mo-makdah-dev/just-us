@@ -35,3 +35,14 @@ it('rotates HttpOnly sessions on login/logout and refuses client-selected accoun
     expect((await post('/api/profile', { nickname: 'Old cookie', avatar: 'moss' })).status).toBe(401);
   } finally { await app.close(); }
 });
+it('keeps the production authentication limit even if a test quota is supplied', async () => {
+  const origin = 'https://just-us.test'; const app = await createApplication(sqliteStorage(':memory:'), { origin, production: true, testAuthIpLimit: 200 });
+  await new Promise<void>(resolve => app.http.listen(0, '127.0.0.1', resolve)); const base = `http://127.0.0.1:${(app.http.address() as { port: number }).port}`;
+  try {
+    const initial = await fetch(`${base}/api/session`); const cookie = initial.headers.get('set-cookie')!.split(';')[0]; const session = (await initial.json()).data;
+    for (let i = 0; i < 13; i++) {
+      const response = await fetch(`${base}/api/auth/google`, { method: 'POST', headers: { Origin: origin, Cookie: cookie, 'X-CSRF-Token': session.csrf, 'Content-Type': 'application/json' }, body: '{}' });
+      expect(response.status).toBe(i < 12 ? 503 : 429);
+    }
+  } finally { await app.close(); }
+});

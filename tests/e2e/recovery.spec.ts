@@ -29,6 +29,7 @@ test('recovers an account in another browser and changes its password without lo
     await expect(b.getByLabel('Your recovery key', { exact: true })).not.toHaveValue(key);
     await b.getByRole('button', { name: 'I’ve saved my recovery key' }).click();
     await expect(b.getByLabel('Nickname', { exact: true })).toHaveValue('Remember me');
+    await expect(a.getByRole('heading', { name: 'A space that remembers you.' })).toBeVisible();
     await a.reload();
     await expect(a.getByRole('heading', { name: 'A space that remembers you.' })).toBeVisible();
     await b.getByRole('button', { name: 'Account security', exact: true }).click();

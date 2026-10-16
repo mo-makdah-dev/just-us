@@ -1,5 +1,7 @@
 # Just Us — non-game release candidate
 
+Current room rules and audit results: [ROOMS_V2_RELEASE.md](ROOMS_V2_RELEASE.md) and [NON_GAME_AUDIT.md](NON_GAME_AUDIT.md).
+
 October 16, 2026. The private experiment is deployed at https://just-us-c7ee609b.onrender.com. Hosted TLS, database privacy/persistence, independent browser rooms and a real Render redeploy passed. See [HOSTED_RELEASE.md](HOSTED_RELEASE.md). This is not a certification of a fully operated public service.
 
 ## What you can test now
@@ -14,7 +16,7 @@ Open http://localhost:3210. Use an incognito window or a separate browser for th
 6. Refresh, disconnect/reconnect, leave, close, reopen an invitation, or block a connected account. Guest rooms remain available without registering.
 7. **Account security** supports password changes and fresh recovery keys. **Forgot password? Use a recovery key** performs a one-use reset and signs out older account sessions.
 
-No games, subscriptions, photo uploads, chat, or automatic room admission for friends have been added.
+Games, subscriptions and photo uploads remain outside this release. Signed-in room chat, four-person saved rooms and accepted friend-room invitations are implemented.
 
 ## Production work completed in the repository
 
@@ -24,7 +26,7 @@ No games, subscriptions, photo uploads, chat, or automatic room admission for fr
 - Secure/HttpOnly production cookies, session rotation, CSRF/origin controls, strict CSP, timeouts, input bounds, auth/action limits, and server-derived account privileges.
 - Account deletion requires a recent sign-in; deleted accounts lose their connections/invitations and other sessions.
 - Recovery keys are random, hashed at rest, shown once, single use, and replaced after reset. No email recovery is promised.
-- Guest and account state migrates to schema version 3. Storage keeps a private pre-upgrade snapshot transactionally, with at most three schema versions and 30-day expiry on subsequent writes.
+- Guest and account state migrates to schema version 4. Storage keeps a private pre-upgrade snapshot transactionally, with at most three schema versions and 30-day expiry on subsequent writes.
 - Backup/export and restore CLI with checksums, schema validation, and a backup of current state before restore. Restores discard old browser sessions, ephemeral rooms, receipts, and invitations, so old cookies are not revived.
 - Readiness/liveness endpoints; no private answers, passwords, or token payloads in normal server logs.
 - Safe fixed-palette pixel data, not user-authored SVG/HTML. Guests cannot send custom art through room input.
@@ -35,7 +37,7 @@ No games, subscriptions, photo uploads, chat, or automatic room admission for fr
 
 - Production compilation and frontend build.
 - Server/unit/integration checks include real PostgreSQL ownership handover, stale-writer refusal, maintenance exclusion, browser-role denial, an old-password login racing recovery, relationships, private labels, backups, profiles, production headers and room foundation checks. See the latest deployment automation report for counts.
-- Eight independent Chromium browser scenarios against the compiled release, including deployment retry, recovery/password changes across separate browsers, two-account connections, profile art, private labels, shared room themes, invitation links, third-player rejection, refresh and reconnect.
+- Independent Chromium browser scenarios against the compiled release, including deployment retry, recovery/password changes across separate browsers, two-account connections, profile art, private labels, shared room themes, invitation links, fifth-player rejection, refresh and reconnect.
 - Automated WCAG AA checks for home, sign-in/room dialogs, the account page/editor, people page, and phone room.
 - Phone 320/390px, tablet 768/1024px, and desktop layout checks; representative screenshots visually inspected.
 - Dependency audit: zero known vulnerabilities at the last check.
@@ -66,7 +68,7 @@ npm run build
 npm start
 ```
 
-The generated server lives in `dist/server`; only the frontend under `dist/web` is publicly served. Development remains `npm run dev`. Do not run the Vite development middleware in production. The Dockerfile is supplied but its image was not built in this environment; CI and the Render blueprint have not been executed on their external providers.
+The generated server lives in `dist/server`; only the frontend under `dist/web` is publicly served. Development remains `npm run dev`. Do not run the Vite development middleware in production. The Dockerfile is supplied but its image was not built in this environment; GitHub CI and the live Render deployment have been verified.
 
 ### Backups
 

@@ -16,6 +16,7 @@ export type RoomView = {
   theme?: 'sage' | 'sunset' | 'midnight';
   saved: boolean; name: string; memberCode: string; capacity: number;
   members: { accountId: string; nickname: string; avatar: AvatarId; owner: boolean }[];
+  pendingInvitations: { id: string; nickname: string; expiresAt: number }[];
   chatEnabled: boolean; messages: { id: string; nickname: string; text: string; createdAt: number; isYou: boolean }[];
 };
 export type RoomDirectoryView = {
@@ -38,9 +39,9 @@ export type SessionView = {
 };
 export type RoomCommand = {
   commandId: string; roomId: string; expectedRevision: number;
-  type: 'keepAlive' | 'leave' | 'close' | 'regenerateInvite' | 'reopen' | 'theme' | 'memberInvite' | 'remove' | 'rename' | 'chat' | 'saveRoom';
+  type: 'keepAlive' | 'leave' | 'close' | 'regenerateInvite' | 'reopen' | 'theme' | 'memberInvite' | 'remove' | 'rename' | 'chat' | 'saveRoom' | 'revokeCodes' | 'deleteMessage' | 'clearChat';
   theme?: 'sage' | 'sunset' | 'midnight';
-  targetId?: string; name?: string; text?: string;
+  targetId?: string; name?: string; text?: string; messageId?: string;
 };
 export type CommandResult = { room: RoomView | null; invitation?: string };
 export type WireResult<T> = { ok: true; data: T } | { ok: false; error: { code: string; message: string } };

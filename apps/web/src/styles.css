@@ -37,3 +37,11 @@
 @media(max-width:760px){.lobby-grid{display:flex;flex-direction:column}.lobby-main,.lobby-sidebar.room-tools{display:contents}.people-panel{order:1}.room-tools>.room-chat{order:2;margin:0}.room-tools>.invite-panel{order:3}.games-panel{order:4}.four-seat-room .room-frame>small{font-size:5px}.four-seat-room .room-frame>span{font-size:4px}}
 @media(max-width:760px){.people-panel .person-card h3{font-size:12px;overflow-wrap:anywhere}.people-panel .person-card p{font-size:10px}.people-panel .visitor-tag,.people-panel .you-label{font-size:9px}}
 .directory-actions{display:flex;flex-wrap:wrap;gap:12px;flex-shrink:0}@media(max-width:760px){.directory-actions{margin-top:20px}}
+.security-tools { margin-top: 2rem; border-top: 1px solid var(--line); padding-top: 1rem; }
+.security-tools h3 { margin-top: 1.5rem; }
+.pending-room-invitations > div { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+.chat-delete { font-size: .75rem; min-height: 32px; }
+.help-dialog { max-width: 650px; }
+.help-dialog details { padding: 1rem 0; border-bottom: 1px solid var(--line); }
+.help-dialog summary { cursor: pointer; font-weight: 600; min-height: 36px; }
+.help-dialog p { line-height: 1.7; }

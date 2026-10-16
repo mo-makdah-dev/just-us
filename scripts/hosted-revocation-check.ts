@@ -25,6 +25,16 @@ try {
   const replay = await post(b, '/api/command', original.body); assert.equal(replay.status(), 200); assert.deepEqual((await replay.json()).data, { room: null });
   const fresh = await post(b, '/api/command', { ...original.body, commandId: randomUUID() }); assert.equal(fresh.status(), 403); assert.equal((await fresh.json()).error.code, 'NOT_MEMBER');
   assert.equal((await session(b)).room, null);
+  const note = await command(a, 'chat', { text: 'Synthetic deletion check' });
+  await command(a, 'deleteMessage', { messageId: note.result.room.messages.at(-1).id });
+  assert.equal((await session(a)).room.messages.some((m: { text: string }) => m.text === 'Synthetic deletion check'), false);
+  await command(a, 'chat', { text: 'Synthetic history cleanup' }); await command(a, 'clearChat'); assert.deepEqual((await session(a)).room.messages, []);
+  const exported = await post(a, '/api/account/export', { confirm: true }); assert.equal(exported.status(), 200); const exportedData = (await exported.json()).data;
+  assert.equal(exportedData.profile.username, a.username); assert.equal(JSON.stringify(exportedData).includes('passwordHash'), false); assert.equal(JSON.stringify(exportedData).includes('recoveryHash'), false);
+  await command(a, 'memberInvite'); const revokedCode = (await session(a)).room.memberCode; await command(a, 'revokeCodes');
+  const denied = await post(b, '/api/join', { commandId: randomUUID(), invitation: revokedCode, nickname: 'Verification 2', avatar: 'moss' }); assert.equal(denied.status(), 404);
+  const before = (await session(a)).room.id; const ended = await post(a, '/api/auth/sign-out-others', { confirm: true }); assert.equal(ended.status(), 200); assert.equal((await ended.json()).data.room.id, before);
+  console.log('PASS: live chat deletion, history cleanup, credential-free data export, code revocation and session rotation preserve the saved room.');
   console.log('PASS: live member removal ejects the visit, redacts cached chat/room acknowledgements and rejects fresh unauthorized actions.');
 } finally {
   for (const actor of [...actors].reverse()) {
