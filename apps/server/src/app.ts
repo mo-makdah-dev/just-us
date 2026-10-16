@@ -130,12 +130,18 @@ export async function createApplication(storage: Storage, settings: Settings) {
     res.json({ ok: true, data: { url: flow.url } });
   });
   app.post('/api/profile', async (req, res) => res.json({ ok: true, data: await rooms.saveProfile(sessionFrom(req), req.body) }));
+  app.get('/api/saved-rooms', async (req, res) => { await rooms.settled(); res.json({ ok: true, data: rooms.directory(sessionFrom(req)) }); });
+  app.post('/api/saved-rooms', async (req, res) => {
+    limit(`saved:${sessionFrom(req)}`, 30, 60000);
+    res.json({ ok: true, data: await rooms.savedAction(sessionFrom(req), req.body) });
+  });
   app.post('/api/auth/delete', async (req, res) => {
     z.object({ confirm: z.literal('DELETE') }).strict().parse(req.body);
     authResult(res, await rooms.deleteAccount(sessionFrom(req)));
   });
   app.post('/api/rooms', async (req, res) => {
-    limit(`create:${req.ip}`, 5, 600000);
+    const account = rooms.view(sessionFrom(req)).account;
+    limit(`create:${account?.id || req.ip}`, account ? 20 : 5, 600000);
     res.json({ ok: true, data: await rooms.create(sessionFrom(req), req.body) });
   });
   app.post('/api/join', async (req, res) => {
@@ -143,6 +149,7 @@ export async function createApplication(storage: Storage, settings: Settings) {
     res.json({ ok: true, data: await rooms.join(sessionFrom(req), req.body) });
   });
   app.post('/api/command', async (req, res) => {
+    if (req.body?.type === 'chat') limit(`chat:${sessionFrom(req)}`, 5, 10000);
     limit(`action:${sessionFrom(req)}`, 20, 1000);
     res.json({ ok: true, data: await rooms.command(sessionFrom(req), req.body) });
   });
@@ -166,6 +173,7 @@ export async function createApplication(storage: Storage, settings: Settings) {
     pingTimeout: 5000,
   });
   io.use(async (socket, next) => {
+    if (settings.production && socket.handshake.auth.protocolVersion !== 4) return next(new Error('Just Us has been updated. Refresh this page to continue.'));
     try { await storage.assertOwnership?.(); }
     catch {
       return next(Object.assign(new Error('Our space is reconnecting. Please wait a moment.'), { data: { code: 'SERVER_RESTARTING' } }));
@@ -205,6 +213,7 @@ export async function createApplication(storage: Storage, settings: Settings) {
       try {
         if (!socket.data.joined) throw new AppError('NOT_READY', 'Wait for the room to connect.');
         limit(`action:${sessionId}`, 20, 1000);
+        if ((input as { type?: string })?.type === 'chat') limit(`chat:${sessionId}`, 5, 10000);
         const data = await rooms.command(sessionId, input);
         ack({ ok: true, data });
       } catch (e) { ack(errorBody(e)); }

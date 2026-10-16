@@ -1,0 +1,65 @@
+import { expect, test, type Page } from '@playwright/test';
+import AxeBuilder from '@axe-core/playwright';
+async function register(page: Page, name: string) {
+  await page.goto('/'); await page.getByRole('button', { name: /Join free/ }).first().click();
+  const dialog = page.getByRole('dialog', { name: 'Create a free account' });
+  await dialog.getByLabel('Username', { exact: true }).fill(`v2_${name.toLowerCase()}_${Date.now()}`);
+  await dialog.getByLabel('Password', { exact: true }).fill('a unique new rooms password');
+  await dialog.getByLabel('Nickname', { exact: true }).fill(name);
+  await dialog.getByRole('button', { name: 'Create my free account' }).click();
+  await page.getByRole('button', { name: 'I’ve saved my recovery key' }).click();
+  await page.getByRole('button', { name: 'My account', exact: true }).first().click();
+}
+test('saved rooms, accepted friend invites, four seats, private chat and guest membership fallback work on phones', async ({ browser }) => {
+  test.setTimeout(120000);
+  const contexts = await Promise.all([browser.newContext(), browser.newContext(), browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }), browser.newContext({ viewport: { width: 320, height: 720 } })]);
+  try {
+    const [a, b, visitor, fallback] = await Promise.all(contexts.map(c => c.newPage()));
+    await register(a, 'Alice'); await register(b, 'Bob');
+    await a.getByRole('button', { name: 'My people', exact: true }).click();
+    await a.getByRole('button', { name: /Invite a friend/ }).click();
+    const invite = await a.getByLabel('Private invitation link', { exact: true }).inputValue();
+    await b.goto(invite); await b.getByRole('button', { name: 'Accept friend invitation' }).click();
+    await expect(b.getByRole('heading', { name: 'Alice', exact: true })).toBeVisible();
+    await a.getByRole('button', { name: 'My rooms', exact: true }).click();
+    await a.getByRole('button', { name: 'Create a room', exact: true }).click();
+    await a.getByRole('button', { name: 'Create our little room' }).click();
+    await expect(a.getByText('Room connected', { exact: true })).toBeVisible();
+    await a.getByLabel('Room name', { exact: true }).fill('Our Sunday room');
+    await a.getByRole('button', { name: 'Save room name', exact: true }).click();
+    await a.getByLabel('Invite an accepted friend').selectOption({ label: 'Bob' });
+    await a.getByRole('button', { name: 'Send room invitation', exact: true }).click();
+    await expect(a.getByText('Invitation sent to their My rooms inbox.')).toBeVisible();
+    await b.getByRole('button', { name: 'My rooms', exact: true }).click();
+    await b.getByRole('button', { name: 'Accept room invitation', exact: true }).click();
+    await expect(b.getByText('Room connected', { exact: true })).toBeVisible();
+    await a.getByLabel('Your message', { exact: true }).fill('Members remember this'); await a.getByRole('button', { name: 'Send message', exact: true }).click();
+    await expect(b.getByText('Members remember this', { exact: true })).toBeVisible();
+    const visitorCode = await a.getByLabel('Visitor code', { exact: true }).inputValue();
+    await visitor.goto('/'); await visitor.getByRole('button', { name: 'Join a room', exact: true }).click();
+    await visitor.getByLabel('What should we call you?').fill('Guest one'); await visitor.getByLabel('Room code or invite link').fill(visitorCode);
+    await visitor.getByRole('button', { name: 'Join as a visitor', exact: true }).click();
+    await expect(visitor.getByRole('button', { name: 'Sign in to use chat' })).toBeVisible();
+    expect((await visitor.evaluate(async () => (await (await fetch('/api/session')).json()).data.room.messages))).toEqual([]);
+    await b.getByRole('button', { name: 'My rooms', exact: true }).click(); await b.getByRole('button', { name: 'Create a room', exact: true }).click(); await b.getByRole('button', { name: 'Create our little room' }).click();
+    await expect(b.getByText('Room connected', { exact: true })).toBeVisible(); await b.getByRole('button', { name: 'My rooms', exact: true }).click();
+    await expect(b.locator('.saved-room-card')).toHaveCount(2);
+    await b.locator('.saved-room-card').filter({ hasText: 'Our Sunday room' }).getByRole('button', { name: 'Enter room', exact: true }).click();
+    await expect(b.getByText('Members remember this', { exact: true })).toBeVisible();
+    await a.getByRole('button', { name: 'New membership code', exact: true }).click();
+    const membership = await a.getByLabel('Membership code', { exact: true }).inputValue();
+    await fallback.goto(`/#invite=${membership}`); await fallback.getByLabel('What should we call you?').fill('Guest two');
+    await expect(fallback.getByRole('button', { name: 'Sign in for saved membership & chat →' })).toBeVisible();
+    await fallback.getByRole('button', { name: 'Join as a visitor', exact: true }).click();
+    await expect(a.getByText('4 / 4 HERE', { exact: true })).toBeVisible();
+    await expect(a.getByLabel('Membership code', { exact: true })).toHaveValue('');
+    await expect(a.getByRole('button', { name: 'New visitor code', exact: true })).toBeDisabled();
+    expect(await fallback.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    const scan = await new AxeBuilder({ page: visitor }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']).analyze(); expect(scan.violations.map(v => v.id)).toEqual([]);
+    await visitor.screenshot({ path: 'test-results/four-person-phone.png', fullPage: true }); await a.screenshot({ path: 'test-results/saved-room-desktop.png', fullPage: true });
+    await a.locator('.room-roster > div').filter({ hasText: 'Bob' }).getByRole('button', { name: 'Remove', exact: true }).click(); await a.getByRole('button', { name: 'Confirm remove', exact: true }).click();
+    await expect(b.getByRole('heading', { name: /Different places/ })).toBeVisible(); await b.getByRole('button', { name: 'My rooms', exact: true }).click();
+    await expect(b.locator('.saved-room-card').filter({ hasText: 'Our Sunday room' })).toHaveCount(0);
+    await a.getByRole('button', { name: 'My rooms', exact: true }).click(); await a.reload(); await expect(a.getByRole('heading', { name: 'Our Sunday room', exact: true })).toBeVisible();
+  } finally { await Promise.all(contexts.map(c => c.close())); }
+});

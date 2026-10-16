@@ -91,8 +91,8 @@ describe('authoritative room lifecycle', () => {
   });
   it('does not let heartbeats or repeated keep-alive extend the absolute lifetime', async () => {
     const { rooms, a, advance } = await setup();
-    for (let i = 0; i < 15; i++) { advance(90 * 60000); await rooms.command(a.sessionId, cmd(rooms, a.sessionId, 'keepAlive')); }
-    advance(91 * 60000); await rooms.sweep(); expect(rooms.view(a.sessionId).room).toBeNull();
+    for (let i = 0; i < 5; i++) { advance(10 * 60000); await rooms.command(a.sessionId, cmd(rooms, a.sessionId, 'keepAlive')); }
+    advance(10 * 60000); await rooms.sweep(); expect(rooms.view(a.sessionId).room).toBeNull();
   });
   it('lets a participant leave and closes the room for both on owner command', async () => {
     const { rooms, a, b, joinInput } = await setup();

@@ -1,3 +1,5 @@
+> Current product rules are in [ROOMS_V2_PLAN.md](docs/ROOMS_V2_PLAN.md): four occupants, saved rooms, single-use membership/visitor codes and signed-in chat. These supersede the original two-person and no-chat scope below.
+
 # Just Us — detailed project plan
 
 Planning date: October 16, 2026. Working name only. Status: room/account foundation plus the non-game design release implemented locally: pixel studio, people, private labels, account recovery, and illustrated rooms. See `docs/PRODUCTION_CHECKLIST.md` and `docs/RELEASE_READINESS.md` for current verification and remaining external production gates. The numbered phases below preserve the original plan. No games yet.
@@ -533,3 +535,4 @@ Official sources checked October 16, 2026; provider prices and policies may chan
 - [CIPO copyright basics](https://www.ised-isde.canada.ca/site/canadian-intellectual-property-office/en/copyright-learn-basics/copyright-learn-basics-protect-your-original-works-learn-why-copyright-matters).
 - [USPTO trademark/patent/copyright comparison](https://www.uspto.gov/trademarks/basics/trademark-patent-copyright).
 - [Canadian CONNECT FOUR trademark record](https://ised-isde.canada.ca/cipo/trademark-search/431855).
+

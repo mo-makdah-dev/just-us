@@ -1,3 +1,5 @@
+> Rooms v2 uses schema version 4 and the membership/chat rules in [ROOMS_V2_PLAN.md](ROOMS_V2_PLAN.md). Older lifecycle notes below describe the original foundation.
+
 # Phase 1 architecture decisions
 
 The product plan is the long-term direction. These are the original Phase 1 choices and limits. Phase 2 adds version-two account storage, username authentication, optional Google OAuth, and durable local data; its current decisions are documented in [PHASE_2.md](PHASE_2.md).
@@ -52,3 +54,4 @@ This is a small private pilot: capped sessions/rooms, one server, aggregate pers
 Socket.IO uses WebSocket transport only to simplify one-origin routing. Networks that block WebSockets will not receive a polling fallback in this phase; the UI reports reconnecting. Adding fallback requires explicit hosting/routing and browser tests.
 
 There are no games yet, so turn/outcome/hidden-answer tests begin with the first game. Phase 1 tests projection boundaries and room action authority; it does not claim to test future game secrets.
+

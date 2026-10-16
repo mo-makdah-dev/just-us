@@ -19,7 +19,7 @@ if (command === 'restore') {
   try {
     await temporary.save(restored); await new Rooms(temporary).init(); restored = await temporary.load();
     // Restored backups must not revive old browser credentials or stale rooms/invitations.
-    Object.assign(restored as object, { sessions: {}, rooms: {}, receipts: {}, invitations: {} });
+    Object.assign(restored as object, { sessions: {}, rooms: {}, receipts: {}, invitations: {}, roomRequests: {} });
   }
   finally { await temporary.close(); }
 }

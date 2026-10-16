@@ -43,7 +43,7 @@ it('authenticates independent HTTP/socket sessions and broadcasts membership onl
   expect(joined.status).toBe(200); expect((await update).room!.players).toHaveLength(2);
   expect(strangerRoom).toBeNull();
   const full = await stranger.post('/api/join', { commandId: randomUUID(), nickname: 'C', avatar: 'sky', invitation: created.body.data.room.code });
-  expect(full.status).toBe(409);
+  expect(full.status).toBe(404); // The invitation was consumed by the successful admission.
   const view = (await b.connect()).first.room!;
   const forged = await strangerSocket.timeout(2000).emitWithAck('command', { type: 'close', roomId: view.id, expectedRevision: view.revision, commandId: randomUUID() });
   expect(forged.error.code).toBe('NOT_MEMBER');

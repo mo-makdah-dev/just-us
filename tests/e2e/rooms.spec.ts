@@ -26,15 +26,14 @@ test('desktop and phone join independently, refresh, recover, and close the shar
   await a.screenshot({ path: 'test-results/home-desktop.png', fullPage: true });
   await a.getByRole('button', { name: 'Create a room', exact: true }).click();
   await a.getByLabel('What should we call you?').fill('Alex');
-  await a.getByRole('button', { name: 'moss avatar', exact: true }).click();
   await a.getByRole('button', { name: 'Create our little room' }).click();
-  await expect(a.getByRole('heading', { name: 'One seat saved for your person.' })).toBeVisible();
+  await expect(a.getByRole('heading', { name: 'Three seats for your favourite people.' })).toBeVisible();
   await expect(a.getByText('Room connected', { exact: true })).toBeVisible();
   const code = await a.getByTestId('room-code').inputValue();
   await b.goto('/'); await b.getByRole('button', { name: 'Join a room', exact: true }).click();
   await b.getByLabel('What should we call you?').fill('Sam'); await b.getByLabel('Room code or invite link').fill(code);
-  await b.getByRole('button', { name: 'peach avatar', exact: true }).click();
-  await b.getByRole('button', { name: 'Join their room' }).click();
+  
+  await b.getByRole('button', { name: 'Join as a visitor' }).click();
   await expect(a.getByRole('heading', { name: 'Good company, found.' })).toBeVisible();
   await expect(b.getByRole('heading', { name: 'Good company, found.' })).toBeVisible();
   await expect(a.getByRole('heading', { name: /Sam/ })).toBeVisible();
@@ -46,8 +45,8 @@ test('desktop and phone join independently, refresh, recover, and close the shar
   expect(findings((await new AxeBuilder({ page: b }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']).analyze()).violations)).toEqual([]);
   await c.goto('/'); await c.getByRole('button', { name: 'Join a room', exact: true }).click();
   await c.getByLabel('What should we call you?').fill('Third'); await c.getByLabel('Room code or invite link').fill(code);
-  await c.getByRole('button', { name: 'Join their room' }).click();
-  await expect(c.locator('.form-error')).toContainText('already has its two people');
+  await c.getByRole('button', { name: 'Join as a visitor' }).click();
+  await expect(c.locator('.form-error')).toContainText('invalid or has expired');
   await b.reload(); await expect(b.getByRole('heading', { name: 'Good company, found.' })).toBeVisible();
   await expect(b.getByText('Room connected', { exact: true })).toBeVisible();
   await phone.setOffline(true);
@@ -59,8 +58,8 @@ test('desktop and phone join independently, refresh, recover, and close the shar
   await b.evaluate(() => window.dispatchEvent(new Event('online')));
   await expect(b.getByText('Room connected', { exact: true })).toBeVisible({ timeout: 15000 });
   await expect(a.getByText(/Reconnecting ·/)).toHaveCount(0);
-  await a.getByRole('button', { name: 'Close for both', exact: true }).click();
-  await a.getByRole('button', { name: 'Close the room', exact: true }).click();
+  await a.getByRole('button', { name: 'Delete room for everyone', exact: true }).click();
+  await a.getByRole('button', { name: 'Confirm delete', exact: true }).click();
   await expect(a.getByRole('heading', { name: /Different places/ })).toBeVisible();
   await expect(b.getByRole('heading', { name: /Different places/ })).toBeVisible();
   expect(errors).toEqual([]);
@@ -78,12 +77,12 @@ test('invitation links join on a 320px screen and dialogs support keyboard navig
   await b.goto(`/#invite=${token}`); await expect(b.getByRole('dialog')).toBeVisible();
   await expect(b).not.toHaveURL(/#invite/);
   await b.getByLabel('What should we call you?').fill('Robin');
-  await b.getByRole('button', { name: 'Join their room' }).click();
+  await b.getByRole('button', { name: 'Join as a visitor' }).click();
   await expect(b.getByText('Room connected', { exact: true })).toBeVisible();
   await expect.poll(() => b.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  await b.getByRole('button', { name: 'Leave room', exact: true }).click();
-  await expect(b.getByRole('dialog')).toBeVisible(); await b.keyboard.press('Escape');
-  await expect(b.getByRole('dialog')).not.toBeVisible();
+  await b.getByRole('button', { name: 'Leave this visit', exact: true }).click();
+  await expect(b.getByRole('alert').filter({ hasText: 'Leave this visit?' })).toBeVisible(); await b.getByRole('button', { name: 'Cancel', exact: true }).focus(); await b.keyboard.press('Enter');
+  await expect(b.getByRole('button', { name: 'Confirm leave', exact: true })).not.toBeVisible();
   await creator.close(); await mobile.close();
 });
 

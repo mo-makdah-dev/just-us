@@ -6,13 +6,21 @@ export type PlayerView = {
   id: string; nickname: string; avatar: AvatarId; seat: number;
   connected: boolean; reconnectUntil: number | null; isYou: boolean;
   avatarDesign?: AvatarDesign | null; petName?: string | null;
+  visitor: boolean; accountId: string | null;
 };
 export type RoomView = {
   id: string; revision: number; phase: 'waiting' | 'lobby';
   code: string; isOwner: boolean; players: PlayerView[];
-  expiresAt: number; serverTime: number; admissionsOpen: boolean;
+  expiresAt: number | null; serverTime: number; admissionsOpen: boolean;
   canReopen: boolean; games: []; createdAt: number;
   theme?: 'sage' | 'sunset' | 'midnight';
+  saved: boolean; name: string; memberCode: string; capacity: number;
+  members: { accountId: string; nickname: string; avatar: AvatarId; owner: boolean }[];
+  chatEnabled: boolean; messages: { id: string; nickname: string; text: string; createdAt: number; isYou: boolean }[];
+};
+export type RoomDirectoryView = {
+  rooms: { id: string; name: string; owner: boolean; memberCount: number; activeCount: number; current: boolean }[];
+  invitations: { id: string; roomName: string; inviter: string; expiresAt: number }[];
 };
 export type AccountView = { id: string; username: string | null; nickname: string; avatar: AvatarId; provider: 'password' | 'google'; avatarDesign?: AvatarDesign | null };
 export type PeopleView = {
@@ -30,8 +38,9 @@ export type SessionView = {
 };
 export type RoomCommand = {
   commandId: string; roomId: string; expectedRevision: number;
-  type: 'keepAlive' | 'leave' | 'close' | 'regenerateInvite' | 'reopen' | 'theme';
+  type: 'keepAlive' | 'leave' | 'close' | 'regenerateInvite' | 'reopen' | 'theme' | 'memberInvite' | 'remove' | 'rename' | 'chat' | 'saveRoom';
   theme?: 'sage' | 'sunset' | 'midnight';
+  targetId?: string; name?: string; text?: string;
 };
 export type CommandResult = { room: RoomView | null; invitation?: string };
 export type WireResult<T> = { ok: true; data: T } | { ok: false; error: { code: string; message: string } };

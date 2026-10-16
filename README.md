@@ -1,6 +1,6 @@
 # Just Us
 
-A private little space for two. Guest rooms, free accounts, pixel-art profiles, friends, and one special person are implemented. Playable games arrive later. See [release readiness](docs/RELEASE_READINESS.md) for verified work and the remaining live-production gates.
+A private little space for your people: up to four occupants, one-hour guest rooms, saved account rooms, single-use membership/visitor invitations and signed-in room chat. Pixel profiles, accepted friends and one mutual special person are included. Games arrive later. See [Rooms v2](docs/ROOMS_V2_RELEASE.md) for the current product rules.
 
 **Live experiment:** https://just-us-c7ee609b.onrender.com — see [verified hosted release](docs/HOSTED_RELEASE.md). Create an online account there; local accounts remain separate.
 
@@ -22,8 +22,8 @@ No cloud account, database installation, Docker, domain, or credit card is neede
 
 - Mobile-first landing, nickname and six original pixel-avatar presets.
 - Create/join via unpredictable invitation link or a 10-character code.
-- Two-person lobby, live connection status, secure browser sessions.
-- Refresh/reconnect recovery, reserved seats, idle/absolute expiry.
+- Four-person rooms, visitor/member badges, live connection status and secure browser sessions.
+- Refresh/reconnect recovery, five-minute seat grace, one-hour/five-empty-minute guest expiry and persistent account rooms.
 - Creator invitation rotation, leave/close controls, ownership transfer after departure.
 - Server authority, runtime validation, CSRF/origin checks, action limits, idempotent commands.
 - Local SQLite and a PostgreSQL adapter, with no public database reads.

@@ -62,7 +62,9 @@ try {
   await a.getByRole('button', { name: 'Create a room', exact: true }).click();
   await a.getByRole('button', { name: 'Create our little room' }).click();
   await expect(a.getByText('Room connected', { exact: true })).toBeVisible();
-  const code = await a.getByTestId('room-code').inputValue();
+  await a.getByRole('button', { name: 'New membership code', exact: true }).click();
+  const code = await a.getByLabel('Membership code', { exact: true }).inputValue();
+  const roomId = await a.evaluate(async () => (await (await fetch('/api/session')).json()).data.room.id);
   await b.getByRole('button', { name: /Back to our little space/ }).click();
   await b.getByRole('button', { name: 'Join a room', exact: true }).click();
   await b.getByLabel('Room code or invite link').fill(code); await b.getByRole('button', { name: 'Join their room' }).click();
@@ -75,8 +77,8 @@ try {
   await expect(b.locator('.room-interior.theme-sunset')).toBeVisible();
   await c.goto(url); await c.getByRole('button', { name: 'Join a room', exact: true }).click();
   await c.getByLabel('What should we call you?').fill('Third'); await c.getByLabel('Room code or invite link').fill(code);
-  await c.getByRole('button', { name: 'Join their room' }).click();
-  await expect(c.locator('.form-error')).toContainText('already has its two people');
+  await c.getByRole('button', { name: 'Join as a visitor' }).click();
+  await expect(c.locator('.form-error')).toContainText('invalid or has expired');
   await b.reload(); await expect(b.getByText('Room connected', { exact: true })).toBeVisible();
   expect(await b.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   const accessibility = await new AxeBuilder({ page: b }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']).analyze();
@@ -88,19 +90,21 @@ try {
   await deploy();
   await expect(b.getByText('Room connected', { exact: true })).toBeVisible({ timeout: 90000 });
   await a.reload(); await b.reload();
-  await expect(a.getByTestId('room-code')).toHaveValue(code, { timeout: 60000 });
-  await expect(b.getByTestId('room-code')).toHaveValue(code, { timeout: 60000 });
+  await expect.poll(() => a.evaluate(async () => (await (await fetch('/api/session')).json()).data.room?.id), { timeout: 60000 }).toBe(roomId);
+  await expect.poll(() => b.evaluate(async () => (await (await fetch('/api/session')).json()).data.room?.id), { timeout: 60000 }).toBe(roomId);
+  await a.getByLabel('Your message', { exact: true }).fill('Hello from the saved room'); await a.getByRole('button', { name: 'Send message', exact: true }).click();
+  await expect(b.getByText('Hello from the saved room', { exact: true })).toBeVisible();
   await expect(b.locator('.room-interior.theme-sunset')).toBeVisible();
   const profile = await a.evaluate(async () => (await (await fetch('/api/session')).json()).data.account);
   expect(profile.username).toBe(accounts.get(a)); expect(profile.avatarDesign.pixels[1]).toBe(1);
   await expect(a.locator('.room-name').filter({ hasText: 'Sunshine' })).toBeVisible();
   expect(errors).toEqual([]);
-  console.log('PASS: live Render redeploy preserves signed-in sessions, room seats/code, saved art, pet names and theme.');
+  console.log('PASS: live Render redeploy preserves signed-in sessions, saved memberships, room seats, chat, saved art, pet names and theme.');
 } finally {
   try {
     await a.goto(url);
-    const close = a.getByRole('button', { name: 'Close for both', exact: true });
-    if (await close.isVisible()) { await close.click(); await a.getByRole('button', { name: 'Close the room', exact: true }).click(); }
+    const close = a.getByRole('button', { name: 'Delete room for everyone', exact: true });
+    if (await close.isVisible()) { await close.click(); await a.getByRole('button', { name: 'Confirm delete', exact: true }).click(); }
     for (const [page, username] of accounts) {
       const session = (await (await page.context().request.get(`${url}/api/session`)).json()).data;
       if (session.account?.username !== username) throw new Error('Unexpected test account; refusing deletion.');

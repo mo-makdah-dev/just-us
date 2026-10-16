@@ -83,7 +83,7 @@ it('migrates version-one guest data without destroying existing rooms', async ()
   const rooms = new Rooms(storage); await rooms.init();
   expect((await rooms.authenticate(token)).sessionId).toBe(id);
   expect(rooms.view(id).access.tier).toBe('guest');
-  expect((await storage.load() as { version: number }).version).toBe(3);
+  expect((await storage.load() as { version: number }).version).toBe(4);
 });
 it('trusts Google subjects only through the server binding and never silently merges by nickname', async () => {
   const { rooms, guest } = await setup();

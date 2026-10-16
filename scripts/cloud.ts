@@ -5,6 +5,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomBytes, X509Certificate } from 'node:crypto';
 import pg from 'pg';
+import { makeSnapshot } from '../apps/server/src/snapshots.js';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const local = join(process.env.LOCALAPPDATA || join(homedir(), '.local', 'share'), 'JustUs', 'deployment');
@@ -129,6 +130,7 @@ async function database(state: State, freeOrg?: string) {
 async function deploy(state: State) {
   if (!state.repository || !state.project || !existsSync(passwordPath)) throw new Error('Complete repository and database setup first.');
   if (state.service) {
+    await hostedBackup();
     await run([render, 'deploys', 'create', state.service, '--wait', '--output', 'json', '--confirm']); console.log('Deployment completed. Run npm run cloud -- verify.'); return;
   }
   const secret = await password(); hidden.push(secret);
@@ -166,6 +168,19 @@ async function deploy(state: State) {
     console.log(`Free service created: ${state.service}. Check the initial deployment with npm run cloud -- verify.`);
   } finally { unlinkSync(envFile); }
 }
+async function hostedBackup() {
+  const secret = await password(); hidden.push(secret);
+  const connection = sessionUrl(readFileSync(join(local, 'supabase-link/supabase/.temp/pooler-url'), 'utf8'), secret); hidden.push(connection);
+  const pool = new pg.Pool({ connectionString: connection, max: 1, ssl: { rejectUnauthorized: true, ca: readFileSync(join(local, 'supabase-ca.crt'), 'utf8') }, connectionTimeoutMillis: 10000 });
+  try {
+    const value = (await pool.query('SELECT payload FROM just_us_state WHERE id=1')).rows[0]?.payload;
+    if (!value) throw new Error('No hosted state found; refusing to claim a pre-deploy backup.');
+    const encrypted = await protectCredential(JSON.stringify(makeSnapshot(value)));
+    const destination = join(local, 'backups'); mkdirSync(destination, { recursive: true });
+    writeFileSync(join(destination, `pre-deploy-${Date.now()}.dpapi`), encrypted, { mode: 0o600, flag: 'wx' });
+    console.log('Encrypted pre-deploy snapshot saved outside Git and OneDrive.');
+  } finally { await pool.end(); }
+}
 async function verify(state: State) {
   if (!state.service) throw new Error('No service is recorded yet.');
   const services = list(json(await run([render, 'services', '--output', 'json']))).map(value => value.service ?? value);
@@ -190,6 +205,7 @@ export async function main(args = process.argv.slice(2)) {
   } else if (command === 'repository') await repository(state);
   else if (command === 'database') { const flag = args.indexOf('--free-org'); await database(state, flag >= 0 ? args[flag + 1] : undefined); }
   else if (command === 'deploy') await deploy(state);
+  else if (command === 'backup') await hostedBackup();
   else if (command === 'verify') await verify(state);
   else if (command === 'plan') console.log('Free-only plan: private GitHub just-us → dedicated Supabase Free organization → Render Free Node web service. No resource mutations performed.');
   else throw new Error('Choose status, login, repository, database --free-org ID, deploy, verify, or plan.');
