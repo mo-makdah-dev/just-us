@@ -28,6 +28,11 @@ export function AuthDialog({ mode, setMode, session, onSession, initialNickname,
   const [busy, setBusy] = useState(false); const [error, setError] = useState('');
   const [recovery, setRecovery] = useState('');
   useEffect(() => {
+    const restore = (event: PageTransitionEvent) => { if (event.persisted) { setBusy(false); onPending(false); } };
+    window.addEventListener('pageshow', restore);
+    return () => window.removeEventListener('pageshow', restore);
+  }, [onPending]);
+  useEffect(() => {
     if (mode) { ref.current?.showModal(); setError(''); setPassword(''); setNickname(initialNickname); setAvatar(initialAvatar); }
     else { ref.current?.close(); setPassword(''); }
   }, [mode]);

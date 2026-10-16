@@ -11,3 +11,12 @@ test('Google cancellation restores a pending room invitation without storing cre
   await expect(page.getByRole('dialog', { name: 'Join a room', exact: true }).getByRole('alert')).toBeVisible();
   expect(await page.evaluate(() => sessionStorage.getItem('just-us-auth-return'))).toBeNull();
 });
+test('returning with browser Back unlocks the Google button for another attempt', async ({ page }) => {
+  await page.routeWebSocket('**/socket.io/**', socket => socket.close());
+  await page.route('**/api/session', async route => { const response = await route.fetch(); const body = await response.json(); if (body.ok) body.data.auth.google = true; await route.fulfill({ response, json: body }); });
+  await page.route('**/api/auth/google', route => route.fulfill({ json: { ok: true, data: { url: 'http://localhost:3211/#provider-test' } } }));
+  await page.goto('/'); await page.getByRole('button', { name: 'Sign in', exact: true }).first().click();
+  const google = page.getByRole('button', { name: 'Continue with Google', exact: true }); await google.click(); await expect(google).toBeDisabled();
+  await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })));
+  await expect(google).toBeEnabled();
+});
