@@ -7,6 +7,7 @@ import './styles.css';
 import { AccessCards, AccountPage, AuthDialog, type AuthMode } from './Account.js';
 import { RecoveryDialog } from './Security.js';
 import { RoomInterior } from './RoomInterior.js';
+import { saveAuthReturn, takeAuthReturn } from './authReturn.js';
 import { HelpDialog } from './Help.js';
 import { RoomsDirectory, RoomTools } from './Rooms.js';
 
@@ -113,7 +114,9 @@ function App() {
     window.addEventListener('hashchange', consumeLink);
     const status = new URLSearchParams(location.search).get('auth');
     if (status) {
-      history.replaceState(null, '', location.pathname);
+      let destination = location.pathname;
+      try { const intent = takeAuthReturn(sessionStorage); if (intent) { setPage(intent.page); setMode(intent.mode); if (intent.invitation) setInvite(intent.invitation); if (intent.peopleToken) setPeopleToken(intent.peopleToken); destination = intent.page === 'home' ? '/' : `/${intent.page}`; } } catch {}
+      history.replaceState(null, '', destination);
       if (status === 'success') setNotice('You’re signed in. Welcome to your little space.');
       else setError(status === 'conflict' ? 'This account already has a room in another browser. Your guest room has been kept.' : status === 'cancelled' ? 'Sign-in was cancelled. Your guest room is still here.' : 'Sign-in could not be completed. Your guest room is still here; please try again.');
     }
@@ -261,7 +264,7 @@ function App() {
         </form>}
       </div>
     </dialog>
-    <AuthDialog mode={authMode} setMode={setAuthMode} session={session} initialNickname={nickname} initialAvatar={avatar} onSession={signedSession} onPending={value => { authPending.current = value; busyRef.current = value; }} />
+    <AuthDialog onGoogleStart={() => { try { let code = invite.trim(); if (code.includes('#invite=')) code = new URL(code).hash.slice(8); saveAuthReturn(sessionStorage, { page, mode: resumeMode.current, invitation: code.replace(/[\s-]/g, '').toUpperCase().match(/^[A-Z2-9]{10}$/) ? code.replace(/[\s-]/g, '').toUpperCase() : code, peopleToken }); } catch {} }} mode={authMode} setMode={setAuthMode} session={session} initialNickname={nickname} initialAvatar={avatar} onSession={signedSession} onPending={value => { authPending.current = value; busyRef.current = value; }} />
     <RecoveryDialog code={recoveryCode} onClose={() => setRecoveryCode(null)} />
   </>;
 }

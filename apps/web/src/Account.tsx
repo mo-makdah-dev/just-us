@@ -18,9 +18,9 @@ export function GoogleMark() {
 function AvatarPicker({ value, onChange }: { value: AvatarId; onChange: (v: AvatarId) => void }) {
   return <fieldset className="avatar-picker"><legend>Your pixel you</legend><div>{AVATARS.map(id => <button type="button" key={id} className={`avatar-option ${value === id ? 'selected' : ''}`} aria-label={`${id} avatar`} aria-pressed={value === id} onClick={() => onChange(id)}><Avatar id={id} /></button>)}</div></fieldset>;
 }
-export function AuthDialog({ mode, setMode, session, onSession, initialNickname, initialAvatar, onPending }: {
+export function AuthDialog({ mode, setMode, session, onSession, initialNickname, initialAvatar, onPending, onGoogleStart }: {
   mode: AuthMode | null; setMode: (v: AuthMode | null) => void; session: SessionView | null;
-  onSession: (s: SessionView) => void; initialNickname: string; initialAvatar: AvatarId; onPending: (v: boolean) => void;
+  onSession: (s: SessionView) => void; initialNickname: string; initialAvatar: AvatarId; onPending: (v: boolean) => void; onGoogleStart: () => void;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const [username, setUsername] = useState(''); const [password, setPassword] = useState('');
@@ -44,7 +44,7 @@ export function AuthDialog({ mode, setMode, session, onSession, initialNickname,
   async function google() {
     if (!session) return;
     setBusy(true); onPending(true); setError('');
-    try { const data = await request<{ url: string }>('/api/auth/google', session.csrf, {}); window.location.assign(data.url); }
+    try { const data = await request<{ url: string }>('/api/auth/google', session.csrf, {}); onGoogleStart(); window.location.assign(data.url); }
     catch (e) { setError(e instanceof Error ? e.message : 'Please try again.'); setBusy(false); onPending(false); }
   }
   return <dialog ref={ref} className="dialog auth-dialog" aria-label={mode === 'signup' ? 'Create a free account' : 'Sign in to Just Us'} onCancel={e => { if (busy) e.preventDefault(); else setMode(null); }}>
