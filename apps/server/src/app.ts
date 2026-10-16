@@ -7,7 +7,7 @@ import type { Storage } from './storage.js';
 import { googleOAuth, type GoogleConfig } from './oauth.js';
 import { z } from 'zod';
 
-type Settings = { origin: string; production?: boolean; trustProxy?: number; frontend?: string; clock?: () => number; google?: GoogleConfig; testAuthIpLimit?: number };
+type Settings = { origin: string; production?: boolean; trustProxy?: number; frontend?: string; clock?: () => number; google?: GoogleConfig; testAuthIpLimit?: number; testApiIpLimit?: number };
 export async function createApplication(storage: Storage, settings: Settings) {
   const oauth = googleOAuth(settings.google, settings.origin);
   const rooms = new Rooms(storage, settings.clock, oauth.configured);
@@ -85,7 +85,7 @@ export async function createApplication(storage: Storage, settings: Settings) {
   app.use('/api', (req, res, next) => {
     res.setHeader('Cache-Control', 'no-store');
     try {
-      limit(`api:${req.ip}`, 180, 60000);
+      limit(`api:${req.ip}`, settings.production ? 180 : settings.testApiIpLimit ?? 180, 60000);
       if ((req.headers.origin && req.headers.origin !== settings.origin) || req.headers['sec-fetch-site'] === 'cross-site') throw new AppError('ORIGIN', 'Open this page directly to continue.', 403);
       if (req.method !== 'GET' && req.headers.origin !== settings.origin) throw new AppError('ORIGIN', 'This request is not from this website.', 403);
       next();

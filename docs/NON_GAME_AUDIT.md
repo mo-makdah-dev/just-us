@@ -55,4 +55,4 @@ Pending final local browser checks, CI and controlled live publication. Results 
 
 - A second device may sign in for account management without taking over an active seat. It can explicitly revoke other sessions, then enter a saved room. Duplicate live visits remain refused.
 - Revoked sessions clear their account view automatically, including on recovery; fresh sign-in is needed to return.
-- Full-browser tests use a larger authentication IP allowance only under NODE_ENV=test because all synthetic accounts share localhost. An integration check confirms production ignores that test allowance and still rejects the thirteenth authentication request in its window.
+- Full-browser tests use larger authentication and general API IP allowances only under NODE_ENV=test because all synthetic accounts share localhost. Integration checks confirm production ignores both test allowances and still rejects the thirteenth authentication request and the 181st API request in their respective windows.

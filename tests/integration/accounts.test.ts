@@ -46,3 +46,14 @@ it('keeps the production authentication limit even if a test quota is supplied',
     }
   } finally { await app.close(); }
 });
+it('keeps the production API limit even if a test quota is supplied', async () => {
+  const app = await createApplication(sqliteStorage(':memory:'), { origin: 'https://just-us.test', production: true, testApiIpLimit: 2000 });
+  await new Promise<void>(resolve => app.http.listen(0, '127.0.0.1', resolve)); const base = `http://127.0.0.1:${(app.http.address() as { port: number }).port}`;
+  try {
+    let cookie = '';
+    for (let i = 0; i < 181; i++) {
+      const response = await fetch(`${base}/api/session`, { headers: { Cookie: cookie } }); cookie = response.headers.get('set-cookie')?.split(';')[0] || cookie;
+      expect(response.status).toBe(i < 180 ? 200 : 429); await response.text();
+    }
+  } finally { await app.close(); }
+});
