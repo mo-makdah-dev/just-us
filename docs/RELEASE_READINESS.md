@@ -1,6 +1,6 @@
 # Just Us — non-game release candidate
 
-October 16, 2026. Local implementation and verification complete. **Not deployed or certified as a live production service.**
+October 16, 2026. The private experiment is deployed at https://just-us-c7ee609b.onrender.com. Hosted TLS, database privacy/persistence, independent browser rooms and a real Render redeploy passed. See [HOSTED_RELEASE.md](HOSTED_RELEASE.md). This is not a certification of a fully operated public service.
 
 ## What you can test now
 
@@ -45,8 +45,8 @@ Automated accessibility checks are not a full accessibility certification. Simul
 
 ## External launch gates — still required
 
-1. **Dedicated hosted PostgreSQL:** connect the project, verify certificate trust and browser-role denial, run the actual PostgreSQL persistence/restore checks, and set an appropriate runtime database role. The adapter is implemented but has not been connected to a real database in this session.
-2. **HTTPS hosting:** connect a source repository and the Render service (or equivalent), enter secrets through the provider UI, verify the compiled app and WebSockets on its HTTPS URL, and test from two different networks. The free provider URL is enough for experimentation; a purchased domain is optional.
+1. **Database hardening:** hosted certificate trust, browser-role denial, persistence and isolated snapshot restore are verified. A dedicated least-privileged runtime database role remains public-launch work.
+2. **Real-network testing:** HTTPS hosting, private repository, independent browser WebSockets and live redeploy are verified. Test from two actual devices on different networks before relying on it for dates. No purchased domain is needed.
 3. **Live Google consent:** configure the provider and callbacks, then test success, cancellation, expired attempts, and seat-preserving upgrades. Existing OAuth tests use mocked provider responses; Google is disabled when its configuration is absent.
 4. **Production operations:** choose retention, schedule off-host encrypted backups with restore drills, establish alerting/contact ownership, and confirm spend controls and free-tier limits. Repository scripts do not create a managed backup schedule by themselves.
 5. **Public-service policies:** set the actual operator/contact, launch markets and age audience, and review privacy/terms obligations before public release. No invented business details or blanket legal compliance claim.
@@ -56,7 +56,7 @@ Automated accessibility checks are not a full accessibility certification. Simul
 
 This is a **single-instance private-beta candidate**, not a horizontally scaled public platform. It persists versioned aggregate snapshots, with bounded room/account/session counts and in-memory abuse limits. No performance or availability SLA is claimed. Normalize persistent entities and add measured load tests/distributed coordination before scaling beyond that model.
 
-One process owns the active PostgreSQL token. A replacement claims authority inside a transaction; the old token is fenced from later writes. Rolling updates now use the same service and URL, with a short reconnect instead of manual suspension. Real local PostgreSQL tests pass; live Render/Supabase handover still needs verification. Keep one desired instance and use the documented session pooler on 5432. A free host can sleep or restart, and free database tiers have quotas/availability limits.
+One process owns the active PostgreSQL token. A replacement claims authority inside a transaction; the old token is fenced from later writes. Rolling updates use the same service and URL, with a short reconnect instead of manual suspension. Local and live Render/Supabase handover tests pass. Keep one desired instance and use the documented session pooler on 5432. A free host can sleep or restart, and free database tiers have quotas/availability limits.
 
 ## Build and operate
 

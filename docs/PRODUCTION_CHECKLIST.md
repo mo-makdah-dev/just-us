@@ -51,7 +51,8 @@ Requested October 16, 2026. Work in order; no games in this release.
 
 ## External launch gates (still open)
 
-- [ ] Connect and verify live PostgreSQL, HTTPS hosting and Google OAuth.
+- [x] Connect and verify live PostgreSQL, HTTPS hosting and rolling handover for the private experiment.
+- [ ] Configure and verify optional Google OAuth.
 - [ ] Configure off-host backups, alerts, operator/contact and public policies.
 - [ ] Test actual phones/tablets and two-location internet behavior.
 
