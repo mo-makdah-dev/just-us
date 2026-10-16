@@ -34,6 +34,7 @@ Hosted publication and its final smoke test are recorded after the controlled mi
 - Independent HTTPS desktop/phone accounts accepted a special relationship, privately named each other, edited artwork and redeemed a single-use membership code.
 - Saved memberships, room identity/seats, a chat message/history, saved artwork, pet names and shared theme survived a real Render redeploy. Synthetic accounts and their test room were removed afterward.
 - The final permission audit retires cached room/chat acknowledgement snapshots on departure, removal or deletion. Retried commands cannot expose revoked cached room data or recreate a room during the deduplication window.
+- The final live release passed a focused two-account removal check: revoked visits were ejected, cached acknowledgements returned no room/chat data, and fresh unauthorized actions were denied. Temporary verification accounts and their room were deleted afterward.
 - Local coverage includes 65 server/unit/integration cases and nine compiled browser scenarios; one DPAPI-specific case is Windows-only. GitHub's Linux build/audit/test/browser checks are part of publication.
 
 The site remains at https://just-us-c7ee609b.onrender.com. Refresh existing tabs for the new interface. No additional provider setup is required for this release. Google login remains optional configuration, and real devices/networks still need your testing.
