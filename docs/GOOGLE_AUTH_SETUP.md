@@ -43,4 +43,4 @@ Google sign-in currently creates/uses a Google-specific Just Us profile. It does
 
 ## Current verification
 
-Supabase's exact live/local redirects and site URL were applied successfully. The provider remains disabled until a valid Google Web client is configured. Provider PKCE/identity/replay/expiry tests and temporary OAuth-return-state tests pass; a compiled browser scenario confirms cancelled Google login restores the original room code. Actual Google consent is still pending external Google Cloud access and client creation.
+Google is enabled in Supabase with the downloaded Web client and exact live/local callbacks. The live Render deployment and local preview are configured; hosted PostgreSQL readiness passed. The live Continue with Google button reaches Google account selection with the intended client and Supabase callback. Provider PKCE/identity/replay/expiry tests and OAuth-return-state browser scenarios passed before deployment. A successful real-account consent and return to the Just Us profile remain pending the tester completing Google sign-in.

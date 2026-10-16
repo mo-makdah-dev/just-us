@@ -35,6 +35,7 @@ async function renderVariable(name: string, value: string) {
   const response = await fetch(`https://api.render.com/v1/services/${state.service}/env-vars/${name}`, { method: 'PUT', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ value }), signal: AbortSignal.timeout(15000) });
   if (!response.ok) throw new Error(`Render configuration failed (${response.status}).`);
 }
+let setupStage = 'reading provider configuration';
 async function main() {
   const key = await publicKey(); const mode = process.argv[2] || 'status';
   if (mode === 'status') { console.log(`Google provider: ${await enabled(key) ? 'enabled' : 'not enabled'}\nGoogle callback: ${callback}\nLive app callback: ${state.url}/auth/callback\nLocal app callback: http://localhost:3210/auth/callback`); return; }
@@ -54,10 +55,12 @@ async function main() {
   const pushed = payload(cli(['config', 'push', ...args, '--yes'], env));
   if (pushed.declined_addons?.length || pushed.unsupported?.length) throw new Error('Provider configuration needs review.');
   if (!await enabled(key)) throw new Error('Google provider is not reporting enabled yet; retry status shortly.');
+  setupStage = 'saving Render configuration';
   await renderVariable('SUPABASE_URL', supabaseUrl); await renderVariable('SUPABASE_PUBLISHABLE_KEY', key);
+  setupStage = 'saving local configuration';
   const localPath = resolve('.env'); let local = existsSync(localPath) ? readFileSync(localPath, 'utf8') : '';
   for (const [name, value] of [['SUPABASE_URL', supabaseUrl], ['SUPABASE_PUBLISHABLE_KEY', key]]) { const line = new RegExp(`^${name}=.*$`, 'm'); local = line.test(local) ? local.replace(line, `${name}=${value}`) : local.trimEnd() + `\n${name}=${value}\n`; }
   writeFileSync(localPath, local, { mode: 0o600 });
   console.log('Google provider enabled. Live and local app configuration saved. No Google secret was placed in app code or printed. Run npm run cloud -- deploy, then restart the local preview and complete a real Google sign-in.');
 }
-main().catch(() => { console.error('Google setup did not complete. Credentials were not printed. Check provider status and the private configuration before retrying.'); process.exitCode = 1; });
+main().catch((error: unknown) => { const reason = error instanceof Error && /^(Refresh Render CLI authentication first\.|Render configuration failed \(\d+\)\.)$/.test(error.message) ? ` ${error.message}` : ''; console.error(`Google setup stopped while ${setupStage}.${reason} Credential values are omitted.`); process.exitCode = 1; });
