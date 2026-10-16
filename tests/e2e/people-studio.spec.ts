@@ -58,7 +58,7 @@ test('two accounts accept a special connection, keep labels private, and share c
   await b.getByRole('button', { name: /Back to our little space/ }).click();
   await b.getByRole('button', { name: 'Join a room', exact: true }).click();
   await b.getByLabel('Room code or invite link').fill(code); await b.getByRole('button', { name: 'Join their room' }).click();
-  await expect(a.getByRole('heading', { name: 'Good company, found.' })).toBeVisible();
+  await expect(a.getByText('2 / 4 HERE', { exact: true })).toBeVisible();
   await expect(a.locator('.room-name').filter({ hasText: 'Sunshine' })).toBeVisible();
   await expect(b.locator('.room-name').filter({ hasText: 'Sunshine' })).toHaveCount(0);
   await expect(b.locator('.room-seat-1 .custom-avatar')).toBeVisible();

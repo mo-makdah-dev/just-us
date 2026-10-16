@@ -1,3 +1,4 @@
+import { roomOptions, roomView } from './room-navigation.js';
 import { expect, test, type Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 async function register(page: Page, name: string) {
@@ -25,20 +26,25 @@ test('saved rooms, accepted friend invites, four seats, private chat and guest m
     await a.getByRole('button', { name: 'Create a room', exact: true }).click();
     await a.getByRole('button', { name: 'Create our little room' }).click();
     await expect(a.getByText('Room connected', { exact: true })).toBeVisible();
+    await roomOptions(a, 'Room settings');
     await a.getByLabel('Room name', { exact: true }).fill('Our Sunday room');
     await a.getByRole('button', { name: 'Save room name', exact: true }).click();
+    await roomOptions(a, 'Invite someone');
     await a.getByLabel('Invite an accepted friend').selectOption({ label: 'Bob' });
     await a.getByRole('button', { name: 'Send room invitation', exact: true }).click();
     await expect(a.getByText('Invitation sent to their My rooms inbox.')).toBeVisible();
     await b.getByRole('button', { name: 'My rooms', exact: true }).click();
     await b.getByRole('button', { name: 'Accept room invitation', exact: true }).click();
     await expect(b.getByText('Room connected', { exact: true })).toBeVisible();
+    await roomView(a, 'chat'); await roomView(b, 'chat');
     await a.getByLabel('Your message', { exact: true }).fill('Members remember this'); await a.getByRole('button', { name: 'Send message', exact: true }).click();
+    await roomView(b, 'chat');
     await expect(b.getByText('Members remember this', { exact: true })).toBeVisible();
     const visitorCode = await a.getByLabel('Visitor code', { exact: true }).inputValue();
     await visitor.goto('/'); await visitor.getByRole('button', { name: 'Join a room', exact: true }).click();
     await visitor.getByLabel('What should we call you?').fill('Guest one'); await visitor.getByLabel('Room code or invite link').fill(visitorCode);
     await visitor.getByRole('button', { name: 'Join as a visitor', exact: true }).click();
+    await roomView(visitor, 'chat');
     await expect(visitor.getByRole('button', { name: 'Sign in to use chat' })).toBeVisible();
     expect((await visitor.evaluate(async () => (await (await fetch('/api/session')).json()).data.room.messages))).toEqual([]);
     await b.getByRole('button', { name: 'My rooms', exact: true }).click(); await b.getByRole('button', { name: 'Create a room', exact: true }).click(); await b.getByRole('button', { name: 'Create our little room' }).click();
@@ -46,6 +52,7 @@ test('saved rooms, accepted friend invites, four seats, private chat and guest m
     await expect(b.locator('.saved-room-card')).toHaveCount(2);
     await b.locator('.saved-room-card').filter({ hasText: 'Our Sunday room' }).getByRole('button', { name: 'Enter room', exact: true }).click();
     await expect(b.getByText('Members remember this', { exact: true })).toBeVisible();
+    await roomOptions(a, 'Invite someone');
     await a.getByRole('button', { name: 'New membership code', exact: true }).click();
     await expect(a.getByLabel('Membership code', { exact: true })).toHaveValue(/^[A-Z2-9]{10}$/);
     const membership = await a.getByLabel('Membership code', { exact: true }).inputValue();
@@ -58,6 +65,7 @@ test('saved rooms, accepted friend invites, four seats, private chat and guest m
     expect(await fallback.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     const scan = await new AxeBuilder({ page: visitor }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']).analyze(); expect(scan.violations.map(v => v.id)).toEqual([]);
     await visitor.screenshot({ path: 'test-results/four-person-phone.png', fullPage: true }); await a.screenshot({ path: 'test-results/saved-room-desktop.png', fullPage: true });
+    await roomOptions(a, 'People & access');
     await a.locator('.room-roster > div').filter({ hasText: 'Bob' }).getByRole('button', { name: 'Remove', exact: true }).click(); await a.getByRole('button', { name: 'Confirm remove', exact: true }).click();
     await expect(b.getByRole('heading', { name: /Different places/ })).toBeVisible(); await b.getByRole('button', { name: 'My rooms', exact: true }).click();
     await expect(b.locator('.saved-room-card').filter({ hasText: 'Our Sunday room' })).toHaveCount(0);

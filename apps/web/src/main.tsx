@@ -1,12 +1,14 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { io, type Socket } from 'socket.io-client';
 import { Avatar } from '../../../packages/avatar/src/Avatar.js';
 import { AVATARS, type AvatarId, type CommandResult, type RoomCommand, type RoomView, type SessionView, type WireResult } from '../../../packages/protocol/src/index.js';
 import './styles.css';
+import './room.css';
 import { AccessCards, AccountPage, AuthDialog, type AuthMode } from './Account.js';
 import { RecoveryDialog } from './Security.js';
 import { RoomInterior } from './RoomInterior.js';
+import { GameLibrary } from './GameLibrary.js';
 import { saveAuthReturn, takeAuthReturn } from './authReturn.js';
 import { HelpDialog } from './Help.js';
 import { RoomsDirectory, RoomTools } from './Rooms.js';
@@ -61,7 +63,10 @@ function App() {
   const [busy, setBusy] = useState(false);
   const [connection, setConnection] = useState<'connecting' | 'online' | 'offline' | 'conflict'>('connecting');
   const [confirm, setConfirm] = useState<'leave' | 'close' | null>(null);
-  const [now, setNow] = useState(Date.now());
+  const [libraryOpen, setLibraryOpen] = useState(false);
+  const [roomTab, setRoomTab] = useState<'room' | 'chat'>('room');
+  const [unread, setUnread] = useState(0);
+  const lastMessage = useRef<{ roomId: string; id?: string } | null>(null);
   const socket = useRef<Socket | null>(null);
   const pending = useRef<{ key: string; id: string } | null>(null);
   const roomRef = useRef<RoomView | null>(null);
@@ -71,7 +76,13 @@ function App() {
   const dialog = useRef<HTMLDialogElement>(null);
   const modalActive = mode !== null || confirm !== null;
   const room = session?.room ?? null;
-  const offset = useMemo(() => session ? session.serverTime - Date.now() : 0, [session?.serverTime]);
+  useEffect(() => { setLibraryOpen(false); setRoomTab('room'); }, [room?.id]);
+  useEffect(() => {
+    const latest = room?.messages.at(-1);
+    if (!room || lastMessage.current?.roomId !== room.id || roomTab === 'chat') setUnread(0);
+    else if (latest && latest.id !== lastMessage.current?.id && !latest.isYou) setUnread(count => count + 1);
+    lastMessage.current = room ? { roomId: room.id, id: latest?.id } : null;
+  }, [room?.id, room?.messages.at(-1)?.id, roomTab]);
   roomRef.current = room;
   useEffect(() => { if (!notice) return; const timer = setTimeout(() => setNotice(''), 6000); return () => clearTimeout(timer); }, [notice]);
 
@@ -123,8 +134,7 @@ function App() {
     reload().catch(e => setError(e.message)).finally(() => setLoading(false));
     const popstate = () => setPage(location.pathname === '/account' ? 'account' : location.pathname === '/rooms' ? 'rooms' : 'home');
     window.addEventListener('popstate', popstate);
-    const clock = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => { clearInterval(clock); window.removeEventListener('popstate', popstate); window.removeEventListener('hashchange', consumeLink); };
+    return () => { window.removeEventListener('popstate', popstate); window.removeEventListener('hashchange', consumeLink); };
   }, []);
   useEffect(() => {
     if (!session?.csrf) return;
@@ -193,7 +203,7 @@ function App() {
       if (pending.current?.key !== key) pending.current = { key, id: crypto.randomUUID() };
       const data = await api<CommandResult>(mode === 'create' ? '/api/rooms' : '/api/join', session.csrf,
         { commandId: pending.current.id, nickname: nickname.trim(), avatar, ...(mode === 'join' ? { invitation, asVisitor: !session.account } : {}) });
-      result(data); remember(); navigate('home'); setMode(null); setNotice(mode === 'create' ? 'Your little space is ready. Invite your favourite person.' : 'You made it. Settle in.');
+      result(data); remember(); navigate('home'); setMode(null); setNotice('');
     } catch (e) { setError(e instanceof Error ? e.message : 'Please try again.'); }
     finally { setBusy(false); busyRef.current = false; }
   }
@@ -223,7 +233,6 @@ function App() {
     const token = room && cache.get(`just-us-invite:${room.id}`, true);
     return token ? `${window.location.origin}/#invite=${token}` : null;
   }
-  const secondsLeft = room?.expiresAt ? Math.max(0, Math.ceil((room.expiresAt - (now + offset)) / 1000)) : 0;
   const disabled = busy || connection !== 'online';
 
   return <>
@@ -241,21 +250,17 @@ function App() {
         <section className="how-section" aria-labelledby="how-title"><div className="section-heading"><p className="eyebrow">LESS PLANNING. MORE TOGETHER.</p><h2 id="how-title">A good time starts with a little space.</h2></div><div className="steps"><article><span className="step-number">01</span><h3>Make it yours</h3><p>Pick a name, choose a pixel you, and open your private room.</p></article><article><span className="step-number">02</span><h3>Send a little invite</h3><p>Share your room link or code. Your person can join from any device.</p></article><article><span className="step-number">03</span><h3>Settle in together</h3><p>One shared room, two comfy seats. Your time together starts here.</p></article></div></section>
         <AccessCards signedIn={!!session?.account} onJoin={() => session?.account ? navigate('account') : openAuth('signup')} onGuest={() => begin('create')} />
         <section className="coming-note"><span className="tiny-tiles" aria-hidden="true">▦</span><div><h3>Our little games shelf is on its way.</h3><p>{session?.account ? 'You’re on the full-shelf list. Games will arrive one at a time.' : 'Sign in for access to more games as they arrive. Guest games will be available too.'}</p></div><button className="text-button" onClick={() => session?.account ? navigate('account') : openAuth('login')}>{session?.account ? 'My free account →' : 'Sign in for more →'}</button></section>
-      </> : <section className="lobby">
+      </> : <section className={`lobby calm-room ${roomTab === 'chat' ? 'mobile-chat-active' : 'mobile-room-active'}`}>
         <div className="lobby-heading"><div><p className="eyebrow">YOUR PRIVATE LITTLE CORNER</p><h1>A little time <em>together.</em></h1></div><span className={`connection-pill ${connection === 'online' ? '' : 'muted'}`} role="status"><span className="presence-dot" />{connection === 'online' ? 'Room connected' : connection === 'conflict' ? 'Check your session' : 'Reconnecting…'}</span></div>
         {connection !== 'online' && <div className="connection-banner" role="status">Your seat is saved while we reconnect. Room controls will return when you’re back.<button className="text-button" onClick={() => { setError(''); setConnection('connecting'); socket.current?.connect(); }}>Try reconnecting</button></div>}
-        <div className={`lobby-access-note ${session?.account ? 'is-member' : ''}`}><span className="account-benefit-icon" aria-hidden="true">✦</span><div><b>{session?.account ? 'Your free account came along.' : 'A little more room for you.'}</b><p>{session?.account ? 'Your saved profile is here. More account games are on their way.' : 'Sign in to save your pixel you and access more games as they arrive. Your seat stays yours.'}</p></div><button className="text-button" onClick={() => session?.account ? navigate('account') : openAuth('signup')}>{session?.account ? 'My account →' : 'Join free →'}</button></div>
-        <div className="lobby-grid"><div className="lobby-main"><section className="people-panel"><div className="panel-heading"><h2>{room.players.length >= 2 ? 'Good company, found.' : 'Three seats for your favourite people.'}</h2><span className="small-label">{room.players.length} / 4 HERE</span></div><RoomInterior room={room} onTheme={theme => command('theme', theme)} disabled={disabled} /><div className="people-grid">{[1, 2, 3, 4].map(seat => {
-          const player = room.players.find(p => p.seat === seat);
-          const remaining = player?.reconnectUntil ? Math.max(0, Math.ceil((player.reconnectUntil - (now + offset)) / 1000)) : 0;
-          return player ? <article className="person-card" key={seat}><div className="portrait-wrap"><Avatar id={player.avatar} design={player.avatarDesign} label={`${player.nickname}'s pixel avatar`} /><span className={`avatar-status ${player.connected ? '' : 'away'}`} /></div><h3>{player.nickname} {player.visitor && <span className="visitor-tag">visitor</span>} {player.isYou && <span className="you-label">you</span>}</h3><p>{player.connected ? 'Here with you' : remaining ? `Reconnecting · ${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, '0')}` : 'Seat recovery pending'}</p></article> : <article className="person-card empty-person" key={seat}><div className="empty-portrait" aria-hidden="true">+</div><h3>Your favourite person</h3><p>{room.admissionsOpen ? 'An invitation away' : 'A fresh invitation away'}</p></article>;
-        })}</div></section>
-          <section className="games-panel"><div className="panel-heading"><h2>Your games shelf</h2><span className="pill">{session?.account ? 'FREE ACCOUNT ACCESS' : 'GUEST ACCESS'}</span></div><div className="empty-games"><div className="shelf-illustration" aria-hidden="true"><i>✦</i><b>× ○</b><i>▦</i><span /></div><h3>Good things are making their way here.</h3><p>No games just yet. We’re building this little space first,<br className="desktop-break" /> then adding games one at a time.</p><span className="small-label">{session?.account ? 'YOUR ACCOUNT IS READY FOR THE BIGGER SHELF.' : 'GUEST GAMES FOR EVERYONE. MORE WITH A FREE ACCOUNT.'}</span>{!session?.account && <button className="text-button" onClick={() => openAuth('login')}>Sign in for the upcoming full shelf →</button>}</div></section>
-        </div><RoomTools room={room} session={session} disabled={disabled} onCommand={(type, details) => command(type, undefined, details)} onAuth={() => openAuth('login')} onRooms={() => navigate('rooms')} /></div>
+        <div className="room-mobile-tabs" role="group" aria-label="Room view"><button aria-pressed={roomTab === 'room'} onClick={() => setRoomTab('room')}>Our room</button><button aria-pressed={roomTab === 'chat'} onClick={() => setRoomTab('chat')}>Chat {unread > 0 && <span className="chat-unread" role="status" aria-label={`${unread} unread messages`}>{unread > 9 ? '9+' : unread}</span>}</button></div>
+        <div className="lobby-grid"><div className="lobby-main"><section className="people-panel"><div className="panel-heading"><div><p className="eyebrow">MAKE YOURSELF AT HOME</p><h2>{room.name}</h2></div><span className="small-label">{room.players.length} / 4 HERE</span></div><RoomInterior room={room} onLibrary={() => setLibraryOpen(true)} onTheme={theme => command('theme', theme)} disabled={disabled} /><div className="room-people-strip" aria-label="People in this room">{room.players.map(player => <div className="room-person-chip" key={player.id}><span className={`presence-dot ${player.connected ? '' : 'away-dot'}`} /><h3>{player.nickname}</h3>{player.isYou && <small>you</small>}{player.visitor && <span className="visitor-tag">visitor</span>}{!player.connected && <small>reconnecting</small>}</div>)}</div><p className="room-library-hint">Something to play? Open the games shelf in your room.</p></section>
+        </div><RoomTools chatActive={roomTab === 'chat'} room={room} session={session} disabled={disabled} onCommand={(type, details) => command(type, undefined, details)} onAuth={() => openAuth('login')} onRooms={() => navigate('rooms')} /></div>
       </section>}
       {(error || notice) && <div className={`toast ${error ? 'error-toast' : ''}`} role={error ? 'alert' : 'status'}><span>{error || notice}</span><button aria-label="Dismiss message" onClick={() => { setError(''); setNotice(''); }}><Icon name="close" size={16} /></button></div>}
       {!loading && !session && <div className="retry-panel"><button className="button secondary" onClick={() => { setLoading(true); setError(''); reload().catch(e => setError(e.message)).finally(() => setLoading(false)); }}>Try connecting again</button></div>}
     </main>
+    <GameLibrary open={libraryOpen && !!room} onClose={() => setLibraryOpen(false)} />
     <HelpDialog open={helpOpen} onClose={() => setHelpOpen(false)} /><footer className="site-footer"><button className="text-button" onClick={() => setHelpOpen(true)}>Help & your data</button><span>just us. <span className="footer-dash">—</span> a little closer.</span><button className="text-button" onClick={() => navigate('account')}>{session?.account ? 'Your account' : 'A free account. A little more us. →'}</button></footer>
     <dialog ref={dialog} className="dialog" aria-label={confirm ? 'Confirm room action' : mode === 'create' ? 'Create a room' : 'Join a room'} onCancel={event => { if (busy) { event.preventDefault(); return; } setMode(null); setConfirm(null); setError(''); }}>
       <div className="dialog-inner"><button className="dialog-close icon-button" aria-label="Close dialog" disabled={busy} onClick={() => { setMode(null); setConfirm(null); setError(''); }}><Icon name="close" /></button>

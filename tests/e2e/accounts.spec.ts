@@ -18,7 +18,7 @@ test('guest upgrades in the room, saves a profile, signs out, and signs back in'
   await dialog.getByLabel('Nickname', { exact: true }).fill('Account Alex');
   await dialog.getByRole('button', { name: 'Create my free account' }).click();
   await page.getByRole('button', { name: 'I’ve saved my recovery key' }).click();
-  await expect(page.getByText('Your free account came along.', { exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Account Alex', exact: true })).toBeVisible();
   await expect(page.getByText('Room connected', { exact: true })).toBeVisible();
   await expect(page.getByTestId('room-code')).toHaveValue(code);
   await page.getByRole('button', { name: 'My account', exact: true }).first().click();
