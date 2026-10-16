@@ -182,6 +182,10 @@ function App() {
     if (!session || !mode) return;
     setBusy(true); busyRef.current = true; setError('');
     try {
+      if (session.account && nickname.trim() !== session.account.nickname) {
+        const updated = await api<SessionView>('/api/profile', session.csrf, { nickname: nickname.trim(), avatar: session.account.avatar, avatarDesign: session.account.avatarDesign });
+        setSession(updated);
+      }
       const cleaned = invite.trim();
       let invitation = cleaned;
       if (cleaned.includes('#invite=')) invitation = new URL(cleaned).hash.replace('#invite=', '');
@@ -253,12 +257,12 @@ function App() {
       {!loading && !session && <div className="retry-panel"><button className="button secondary" onClick={() => { setLoading(true); setError(''); reload().catch(e => setError(e.message)).finally(() => setLoading(false)); }}>Try connecting again</button></div>}
     </main>
     <HelpDialog open={helpOpen} onClose={() => setHelpOpen(false)} /><footer className="site-footer"><button className="text-button" onClick={() => setHelpOpen(true)}>Help & your data</button><span>just us. <span className="footer-dash">—</span> a little closer.</span><button className="text-button" onClick={() => navigate('account')}>{session?.account ? 'Your account' : 'A free account. A little more us. →'}</button></footer>
-    <dialog ref={dialog} className="dialog" aria-label={confirm ? 'Confirm room action' : mode === 'create' ? 'Create a room' : 'Join a room'} onCancel={event => { if (busy) { event.preventDefault(); return; } setMode(null); setConfirm(null); setError(''); }} onClick={e => { if (e.target === e.currentTarget && !busy) { setMode(null); setConfirm(null); } }}>
+    <dialog ref={dialog} className="dialog" aria-label={confirm ? 'Confirm room action' : mode === 'create' ? 'Create a room' : 'Join a room'} onCancel={event => { if (busy) { event.preventDefault(); return; } setMode(null); setConfirm(null); setError(''); }}>
       <div className="dialog-inner"><button className="dialog-close icon-button" aria-label="Close dialog" disabled={busy} onClick={() => { setMode(null); setConfirm(null); setError(''); }}><Icon name="close" /></button>
         {confirm ? <><span className="eyebrow">UNTIL NEXT TIME</span><h2>{confirm === 'close' ? 'Close this little space?' : 'Heading out?'}</h2><p>{confirm === 'close' ? 'This deletes the room for everyone. You can always create a fresh one.' : 'You will give up your seat. Your person can stay and open a fresh invitation.'}</p>{error && <p className="form-error" role="alert">{error}</p>}<button className="button primary full" disabled={busy} onClick={() => command(confirm)}>{busy ? 'One moment…' : confirm === 'close' ? 'Close the room' : 'Leave the room'}</button><button className="button quiet full" disabled={busy} onClick={() => setConfirm(null)}>Stay a little longer</button></> : <form onSubmit={submit}><p className="eyebrow">{mode === 'create' ? 'MAKE YOURSELF AT HOME' : 'YOUR SEAT IS WAITING'}</p><h2>{mode === 'create' ? 'Start with a little you.' : 'Come on in.'}</h2><p className="dialog-description">{mode === 'create' ? 'A nickname, a pixel you, and you’re ready.' : 'Your person is just a room code away.'}</p>
           {!session?.account && <div className="room-auth-prompt"><span>Temporary visitor · nickname only</span><button type="button" className="text-button" onClick={() => openAuth('login')}>Sign in for saved membership & chat →</button></div>}
-          <label className="field-label" htmlFor="nickname">What should we call you?</label><input autoComplete="nickname" autoFocus readOnly={!!session?.account} id="nickname" placeholder="Your nickname" maxLength={24} required value={nickname} onChange={e => setNickname(e.target.value)} />
-          <p className="input-help">{session?.account ? 'Your saved profile is used. Edit your avatar and nickname in My account.' : 'Visitors use a temporary nickname and a standard avatar.'}</p>
+          <label className="field-label" htmlFor="nickname">What should we call you?</label><input autoComplete="nickname" autoFocus id="nickname" placeholder="Your nickname" maxLength={24} required value={nickname} onChange={e => setNickname(e.target.value)} />
+          <p className="input-help">{session?.account ? 'Your nickname will also update on your saved profile. Edit your pixels in My account.' : 'Visitors use a temporary nickname and a standard avatar.'}</p>
           {mode === 'join' && <><label className="field-label" htmlFor="invitation">Room code or invite link</label><input id="invitation" placeholder="e.g. AB23 CD45 EF" required value={invite} maxLength={300} autoComplete="off" spellCheck={false} onChange={e => setInvite(e.target.value)} /></>}
           {error && <p className="form-error" role="alert">{error}</p>}<button className="button primary full submit-button" disabled={busy || !nickname.trim()}>{busy ? 'Making room…' : mode === 'create' ? 'Create our little room' : (session?.account ? 'Join their room' : 'Join as a visitor')}{!busy && <Icon name="arrow" />}</button><p className="dialog-footnote"><Icon name="lock" size={13} /> Visitor codes are single-use. Membership needs sign-in; joining as a visitor saves no membership.</p>
         </form>}
