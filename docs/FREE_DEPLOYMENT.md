@@ -2,6 +2,8 @@
 
 Checked October 16, 2026. You already have GitHub. You still need Render and Supabase accounts. Keep both on their **Free** plans. No domain purchase is needed.
 
+**This project is now hosted and verified.** Open https://just-us-c7ee609b.onrender.com and see [HOSTED_RELEASE.md](HOSTED_RELEASE.md). The setup instructions below are retained for rebuilding the experiment.
+
 **Recommended: use the [automated CLI setup](CLI_SETUP.md).** The tools are installed. Open `Connect Just Us.cmd`, approve the three sign-ins and confirm your Supabase organization is Free. The assistant can create the private repository and hosted resources. The dashboard instructions below are a manual fallback.
 
 ## What runs where
@@ -70,7 +72,7 @@ Once dashboards are configured, have the assistant verify:
 4. A third visitor cannot enter an occupied room; pet names remain private per account.
 5. Supabase browser roles cannot read the private state tables; backup/restore works on isolated hosted test data.
 
-**The online deployment and live Supabase verification have not happened yet.** No provider is authenticated. After completing [CLI sign-in](CLI_SETUP.md), the assistant can create the repository and resources; you do not need to create them manually.
+Online deployment and live Supabase verification have passed for this checkout. The assistant created the resources after account authorization and repository-access consent; see [the hosted release evidence](HOSTED_RELEASE.md).
 
 ## Optional: Google sign-in
 

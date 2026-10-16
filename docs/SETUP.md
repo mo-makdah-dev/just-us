@@ -1,5 +1,7 @@
 # What you need to set up
 
+**The free hosted experiment is now set up.** Visit https://just-us-c7ee609b.onrender.com. See [HOSTED_RELEASE.md](HOSTED_RELEASE.md) for results and your testing steps. The following instructions remain for local development or a future fresh deployment.
+
 Updated October 16, 2026. Local experimentation is ready without external accounts. The assistant handles code, commands, configuration, and verification; you guide and test. You only need to perform account sign-in/consent or provide access where a service requires your ownership.
 
 ## 1. Testing on this computer — nothing external
@@ -14,7 +16,7 @@ Nothing in this version requires Google, Facebook, Stripe, Supabase Auth, email,
 
 You already have GitHub. Prefer [the automated CLI setup](CLI_SETUP.md): open `Connect Just Us.cmd`, approve the three sign-ins and confirm a Free Supabase organization. The assistant can handle provisioning. The instructions below are a manual fallback.
 
-For partners in different locations, localhost is insufficient. Use a **free Render web service + free Supabase PostgreSQL project** within their quotas. The app is prepared for this, but no accounts have been created and no deployment is claimed.
+For partners in different locations, use the live **Render Free web service + Supabase PostgreSQL project** within their quotas. Localhost remains available for development.
 
 ### Your account-level steps
 

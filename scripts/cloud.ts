@@ -3,7 +3,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync } from '
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, X509Certificate } from 'node:crypto';
 import pg from 'pg';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
@@ -138,8 +138,15 @@ async function deploy(state: State) {
   const poolerPath = join(work, 'supabase/.temp/pooler-url');
   if (!existsSync(poolerPath)) throw new Error('CLI connection discovery changed. Ask the assistant to use the Connect → Session pooler URL, stored privately.');
   const connection = sessionUrl(readFileSync(poolerPath, 'utf8'), secret); hidden.push(connection);
+  // Same public CA download used by Supabase's official dashboard configuration.
+  const caPath = join(local, 'supabase-ca.crt');
+  const caResponse = await fetch('https://supabase-downloads.s3-ap-southeast-1.amazonaws.com/prod/ssl/prod-ca-2021.crt', { signal: AbortSignal.timeout(15000) });
+  if (!caResponse.ok) throw new Error('Could not download the official Supabase CA. No service was created.');
+  const ca = await caResponse.text(); const certificate = new X509Certificate(ca);
+  if (!certificate.ca || !certificate.subject.includes('Supabase') || Date.parse(certificate.validTo) <= Date.now()) throw new Error('Unexpected or expired Supabase CA.');
+  writeFileSync(caPath, ca, { mode: 0o600 });
   // TLS must verify before any service is created. There is no insecure fallback.
-  const probe = new pg.Pool({ connectionString: connection, ssl: { rejectUnauthorized: true }, connectionTimeoutMillis: 10000 });
+  const probe = new pg.Pool({ connectionString: connection, ssl: { rejectUnauthorized: true, ca }, connectionTimeoutMillis: 10000 });
   try { await probe.query('SELECT 1'); } finally { await probe.end(); }
   state.serviceName ||= state.projectName!; save(state);
   const services = list(json(await run([render, 'services', '--output', 'json']))).map(value => value.service ?? value);
@@ -152,7 +159,7 @@ async function deploy(state: State) {
   const envFile = join(local, 'upload.env');
   writeFileSync(envFile, `DATABASE_URL=${connection}\n`, { mode: 0o600, flag: 'wx' });
   try {
-    const response = json(await run([render, ...renderArguments(state.repository, state.serviceName!, envFile)]));
+    const response = json(await run([render, ...renderArguments(state.repository, state.serviceName!, envFile), '--secret-file', `supabase-ca.crt:${caPath}`, '--env-var', 'DATABASE_CA_FILE=/etc/secrets/supabase-ca.crt']));
     const service = response.service ?? response;
     if (!service.id?.startsWith('srv-')) throw new Error('Unfamiliar Render response. Rerun to discover the existing service before retrying.');
     state.service = service.id; state.url = service.serviceDetails?.url ?? service.url; save(state);

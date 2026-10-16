@@ -2,6 +2,8 @@
 
 October 16, 2026. GitHub CLI 2.102.0, Supabase CLI 2.121.0 and Render CLI 2.29.0 are installed. Local rooms/accounts already work without signing into any provider.
 
+**Setup is now complete for this checkout.** All three providers are authorized and the experiment is live. See [the hosted release and your testing steps](HOSTED_RELEASE.md). The instructions below are retained for a fresh setup.
+
 ## Your remaining steps
 
 1. Open **Connect Just Us.cmd** in the project folder. It runs the three official sign-in flows, one at a time. Approve GitHub, Supabase and Render in your browser. Follow any short terminal prompt. Create the Supabase/Render accounts if needed; GitHub sign-in is available where offered. Do not send passwords or tokens in chat.
@@ -38,7 +40,7 @@ The app reads `/etc/secrets/just-us.env` server-side and derives its allowed HTT
 
 ## Verification status
 
-Installed CLI versions, local authorization detection, command construction, secret redaction, actual Windows DPAPI round-trip and real local PostgreSQL handover are checked. No provider is authenticated yet. Resource creation, Supabase pooler discovery, Render secret-file upload and live deployment are implemented but cannot be fully verified until account access is granted. The blueprint validation command also requires an authenticated Render workspace.
+Installed CLIs, provider authorizations, private repository publishing, dedicated project creation, session-pooler discovery, official CA download, TLS verification, Render secret-file upload, Blueprint validation and live deployment have now been exercised. The Supabase organization response wrapper was corrected after inspecting the live CLI output. DPAPI encryption and redaction checks pass. See [hosted verification results](HOSTED_RELEASE.md).
 
 After provisioning the assistant must verify hosted TLS, database-role privacy, persistence/restart, independent browser room flows and backup/restore on isolated hosted data. You should test actual phones and separate networks. This remains a single-active-server beta with bounded aggregate storage; horizontal scaling, operational backups and public-service policies remain separate launch work.
 

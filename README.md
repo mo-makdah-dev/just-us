@@ -2,6 +2,8 @@
 
 A private little space for two. Guest rooms, free accounts, pixel-art profiles, friends, and one special person are implemented. Playable games arrive later. See [release readiness](docs/RELEASE_READINESS.md) for verified work and the remaining live-production gates.
 
+**Live experiment:** https://just-us-c7ee609b.onrender.com — see [verified hosted release](docs/HOSTED_RELEASE.md). Create an online account there; local accounts remain separate.
+
 ## Try it locally
 
 Node 24 LTS is required. Dependencies are already installed in this checkout.
@@ -50,7 +52,7 @@ Source layout follows [PROJECT_PLAN.md](PROJECT_PLAN.md). Shared browser protoco
 
 Start with [automated CLI setup](docs/CLI_SETUP.md): double-click **Connect Just Us.cmd**, approve the three provider sign-ins, and confirm your Supabase organization is Free. The assistant can create the repository/database/service. Fenced PostgreSQL handover now supports updates to the same service; no manual replacement is needed. The manual walkthrough remains available as a fallback.
 
-See [docs/SETUP.md](docs/SETUP.md) for the free experimental route. The app has **not been deployed** and its live PostgreSQL adapter needs verification against a dedicated hosted database. Local tests do not establish internet multiplayer or actual iPhone/iPad behavior.
+The app is deployed on Render Free with dedicated Supabase PostgreSQL. Live HTTPS, independent browser rooms, database privacy/persistence and a real redeploy have passed verification. See [the hosted release](docs/HOSTED_RELEASE.md). Actual iPhone/iPad and different-network testing remain necessary.
 
 See [docs/ACCOUNT_SETUP.md](docs/ACCOUNT_SETUP.md) for Google OAuth setup and [docs/RELEASE_READINESS.md](docs/RELEASE_READINESS.md) for the current release's scope, checks, backup/restore commands, and external setup gates. Phase documents preserve historical implementation notes.
 
