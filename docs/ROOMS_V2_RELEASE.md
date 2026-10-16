@@ -1,5 +1,7 @@
 # Rooms v2 — product and verification notes
 
+For the subsequent access, security, moderation and usability audit, see [NON_GAME_AUDIT.md](NON_GAME_AUDIT.md).
+
 October 16, 2026. Implements [ROOMS_V2_PLAN.md](ROOMS_V2_PLAN.md). Four people is the chosen small-group capacity; no psychological research claim is made.
 
 ## Final product behavior

@@ -45,14 +45,22 @@ Run typecheck, compiled build, server/integration suite, independent-browser sce
 - The help/data dialog describes actual cookie, storage, recovery, block, retention and free-host behavior; deletion copy matches saved-room destruction.
 - No new dependencies, provider accounts, services or charges were introduced. Storage remains version 4; existing data needs no destructive migration.
 
+- A second device may sign in for account management without taking over an active seat. It can explicitly revoke other sessions, then enter a saved room. Duplicate live visits remain refused.
+- Revoked sessions clear their account view automatically, including on recovery; fresh sign-in is needed to return.
+- Full-browser tests use larger authentication and general API IP allowances only under NODE_ENV=test because all synthetic accounts share localhost. Integration checks confirm production ignores both test allowances and still rejects the thirteenth authentication request and the 181st API request in their respective windows.
+
+
 ## Public launch boundaries
 
 This completes a bounded non-game private-beta audit, not a claim that all possible defects are eliminated. Before a broad public launch, the operator still needs to choose a real support/contact identity and policies, configure Google only if wanted, arrange off-host backups/alerts and test actual devices/networks. The free single-instance aggregate-store capacity and in-memory rate limits remain documented constraints. No public reports/moderation service, email reset or payment feature is implied.
 
 ## Verification record
 
-Pending final local browser checks, CI and controlled live publication. Results are updated after those checks complete.
-
-- A second device may sign in for account management without taking over an active seat. It can explicitly revoke other sessions, then enter a saved room. Duplicate live visits remain refused.
-- Revoked sessions clear their account view automatically, including on recovery; fresh sign-in is needed to return.
-- Full-browser tests use larger authentication and general API IP allowances only under NODE_ENV=test because all synthetic accounts share localhost. Integration checks confirm production ignores both test allowances and still rejects the thirteenth authentication request and the 181st API request in their respective windows.
+- TypeScript and the compiled server/frontend build passed.
+- Coverage comprises 75 server/unit/integration cases and ten compiled independent-browser scenarios. Local checks passed, including the new phone controls and automated WCAG AA checks. The final phone security layout was visually inspected.
+- GitHub run 38948143481 passed build, server tests, dependency audit and all browser scenarios on release commit 8db38f5. The DPAPI case is Windows-only.
+- Dependency audit reported zero known vulnerabilities.
+- Deployed release commit 8db38f5 to the existing free Render service after its encrypted pre-deploy snapshot. Hosted PostgreSQL readiness passed.
+- The focused HTTPS check passed member removal, cached-response redaction, fresh unauthorized-action denial, own-message deletion, owner history cleanup, credential-free account export, both-code revocation and session rotation preserving the saved room. Temporary test accounts and their owned room were deleted.
+- Local preview was restarted with the final compiled build and existing SQLite data. No new external configuration is required.
+- Live URL: https://just-us-c7ee609b.onrender.com. Refresh existing tabs for the new controls.
