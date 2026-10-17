@@ -10,7 +10,7 @@
     "apps/*",
     "packages/*"
   ],
-  "description": "Private four-person rooms, accounts and chat. Games coming later.",
+  "description": "Private four-person rooms, real-time tic-tac-toe, accounts and chat.",
   "scripts": {
     "dev": "tsx apps/server/src/index.ts --dev",
     "cloud": "tsx scripts/cloud.ts",
@@ -20,7 +20,8 @@
     "restore": "node dist/server/scripts/state-tool.js restore",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "check": "tsc --noEmit"
+    "check": "tsc --noEmit",
+    "smoke:tic-tac-toe": "tsx scripts/smoke-tic-tac-toe.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.118.0",

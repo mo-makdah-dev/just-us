@@ -1,3 +1,4 @@
+import { ROOM_PROTOCOL_VERSION } from '../../../packages/protocol/src/index.js';
 import express, { type Request, type Response } from 'express';
 import { createServer } from 'node:http';
 import { Server } from 'socket.io';
@@ -7,7 +8,7 @@ import type { Storage } from './storage.js';
 import { googleOAuth, type GoogleConfig } from './oauth.js';
 import { z } from 'zod';
 
-type Settings = { origin: string; production?: boolean; trustProxy?: number; frontend?: string; clock?: () => number; google?: GoogleConfig; testAuthIpLimit?: number; testApiIpLimit?: number };
+type Settings = { origin: string; production?: boolean; trustProxy?: number; frontend?: string; clock?: () => number; google?: GoogleConfig; testAuthIpLimit?: number; testApiIpLimit?: number; testRoomIpLimit?: number };
 export async function createApplication(storage: Storage, settings: Settings) {
   const oauth = googleOAuth(settings.google, settings.origin);
   const rooms = new Rooms(storage, settings.clock, oauth.configured);
@@ -150,11 +151,11 @@ export async function createApplication(storage: Storage, settings: Settings) {
   });
   app.post('/api/rooms', async (req, res) => {
     const account = rooms.view(sessionFrom(req)).account;
-    limit(`create:${account?.id || req.ip}`, account ? 20 : 5, 600000);
+    limit(`create:${account?.id || req.ip}`, account ? 20 : settings.production ? 5 : settings.testRoomIpLimit ?? 5, 600000);
     res.json({ ok: true, data: await rooms.create(sessionFrom(req), req.body) });
   });
   app.post('/api/join', async (req, res) => {
-    limit(`join:${req.ip}`, 10, 60000);
+    limit(`join:${req.ip}`, settings.production ? 10 : settings.testRoomIpLimit ?? 10, 60000);
     res.json({ ok: true, data: await rooms.join(sessionFrom(req), req.body) });
   });
   app.post('/api/command', async (req, res) => {
@@ -182,7 +183,7 @@ export async function createApplication(storage: Storage, settings: Settings) {
     pingTimeout: 5000,
   });
   io.use(async (socket, next) => {
-    if (settings.production && socket.handshake.auth.protocolVersion !== 4) return next(new Error('Just Us has been updated. Refresh this page to continue.'));
+    if (settings.production && socket.handshake.auth.protocolVersion !== ROOM_PROTOCOL_VERSION) return next(new Error('Just Us has been updated. Refresh this page to continue.'));
     try { await storage.assertOwnership?.(); }
     catch {
       return next(Object.assign(new Error('Our space is reconnecting. Please wait a moment.'), { data: { code: 'SERVER_RESTARTING' } }));

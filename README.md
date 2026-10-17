@@ -32,7 +32,7 @@ No cloud account, database installation, Docker, domain, or credit card is neede
 - Optional server-side Google OAuth integration through Supabase (external configuration required).
 - Guest/free-account comparison, contextual sign-in prompts, and an account page at `/account`.
 
-The profile includes a 24×24 pixel-art editor, friends and one accepted special person, private pet names, and editable category names. Shared rooms have an illustrated interior and owner-controlled themes. Password changes and single-use recovery keys are available in account security. Facebook, games, payments, and account-provider linking remain later work. Google stays disabled until configured; username accounts work immediately.
+The profile includes a 24×24 pixel-art editor, friends and one accepted special person, private pet names, and editable category names. Shared rooms have an illustrated interior and owner-controlled themes. Password changes and single-use recovery keys are available in account security. Tic-tac-toe is the first playable game, with single matches, knockout tournaments, points leagues and live spectators. Facebook, additional games, payments, and account-provider linking remain later work. Google stays disabled until configured; username accounts work immediately.
 
 ## Development commands
 
@@ -57,3 +57,9 @@ The app is deployed on Render Free with dedicated Supabase PostgreSQL. Live HTTP
 See [docs/ACCOUNT_SETUP.md](docs/ACCOUNT_SETUP.md) for Google OAuth setup and [docs/RELEASE_READINESS.md](docs/RELEASE_READINESS.md) for the current release's scope, checks, backup/restore commands, and external setup gates. Phase documents preserve historical implementation notes.
 
 See [docs/PHASE_1.md](docs/PHASE_1.md) for scope and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for implementation tradeoffs.
+
+## Tic-tac-toe
+
+Open the in-room Games shelf and choose Tic-tac-toe. Guests and accounts can play for free. Everyone can raise a hand; the room owner chooses two players or a random pair. Tournament entrants are fixed when started. Points leagues play each pairing twice with swapped X/O: 3 for a win, 1 for a draw, 0 for a loss. Room scores stay with the room; signed-in personal totals appear under My account → My game scores.
+
+See [the detailed rules and implementation plan](docs/TIC_TAC_TOE.md) for disconnects, forfeits, knockout draws, identity/privacy rules and scoreboard retention. To exercise an isolated local match through two real Socket.IO sessions, run `npm run smoke:tic-tac-toe`; it removes its temporary room afterward.

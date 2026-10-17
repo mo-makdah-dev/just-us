@@ -24,6 +24,7 @@ export function RoomTools({ room, session, disabled, onCommand, onAuth, onRooms,
   const [friends, setFriends] = useState<PeopleView['connections']>([]), [friend, setFriend] = useState(''), [name, setName] = useState(room.name);
   const [message, setMessage] = useState(''), [notice, setNotice] = useState(''), [pending, setPending] = useState(false), [confirm, setConfirm] = useState<string | null>(null);
   const [optionsOpen, setOptionsOpen] = useState(false), [invitesOpen, setInvitesOpen] = useState(false);
+  useEffect(() => { if (room.ticTacToe?.open) { setOptionsOpen(false); setInvitesOpen(false); } }, [room.ticTacToe?.open]);
   const chat = useRef<HTMLDivElement>(null);
   const followChat = useRef(true);
   useEffect(() => { setMessage(''); setFriend(''); setOptionsOpen(false); setInvitesOpen(false); followChat.current = true; }, [room.id, session?.account?.id]);

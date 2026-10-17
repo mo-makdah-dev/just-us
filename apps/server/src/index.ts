@@ -35,6 +35,7 @@ const application = await createApplication(storage, { origin, production,
   // spending one shared IP's production authentication budget. Never used live.
   testAuthIpLimit: process.env.NODE_ENV === 'test' ? 200 : undefined,
   testApiIpLimit: process.env.NODE_ENV === 'test' ? 2000 : undefined,
+  testRoomIpLimit: process.env.NODE_ENV === 'test' ? 200 : undefined,
   google: process.env.SUPABASE_URL && process.env.SUPABASE_PUBLISHABLE_KEY ? { url: process.env.SUPABASE_URL, key: process.env.SUPABASE_PUBLISHABLE_KEY } : undefined,
   trustProxy: Number(process.env.TRUST_PROXY || 0),
   frontend: process.argv.includes('--dev') ? undefined : resolve('dist/web'),

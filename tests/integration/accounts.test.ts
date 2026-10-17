@@ -3,6 +3,20 @@ import { createApplication } from '../../apps/server/src/app.js';
 import { sqliteStorage } from '../../apps/server/src/storage.js';
 import { randomUUID } from 'node:crypto';
 
+it('keeps the production join limit even when the browser suite requests a larger test quota', async () => {
+  const origin = 'https://just-us.test';
+  const app = await createApplication(sqliteStorage(':memory:'), { origin, production: true, testRoomIpLimit: 200 });
+  try {
+    await new Promise<void>(resolve => app.http.listen(0, '127.0.0.1', resolve));
+    const base = `http://127.0.0.1:${(app.http.address() as { port: number }).port}`;
+    const initial = await fetch(`${base}/api/session`), cookie = initial.headers.get('set-cookie')!.split(';')[0], session = (await initial.json()).data;
+    for (let i = 0; i < 11; i++) {
+      const response = await fetch(`${base}/api/join`, { method: 'POST', headers: { Origin: origin, Cookie: cookie, 'X-CSRF-Token': session.csrf, 'Content-Type': 'application/json' }, body: JSON.stringify({ commandId: randomUUID(), nickname: 'Guest', avatar: 'moss', invitation: 'BADCODE123' }) });
+      expect(response.status).toBe(i < 10 ? 404 : 429); await response.text();
+    }
+  } finally { await app.close(); }
+});
+
 it('rotates HttpOnly sessions on login/logout and refuses client-selected account privileges', async () => {
   const origin = 'http://localhost:3210';
   const app = await createApplication(sqliteStorage(':memory:'), { origin });

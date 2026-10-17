@@ -2,7 +2,7 @@
 
 # Just Us — detailed project plan
 
-Planning date: October 16, 2026. Working name only. Status: room/account foundation plus the non-game design release implemented locally: pixel studio, people, private labels, account recovery, and illustrated rooms. See `docs/PRODUCTION_CHECKLIST.md` and `docs/RELEASE_READINESS.md` for current verification and remaining external production gates. The numbered phases below preserve the original plan. No games yet.
+Planning date: October 16, 2026. Working name only. Status: room/account foundation plus the non-game design release implemented locally: pixel studio, people, private labels, account recovery, and illustrated rooms. See `docs/PRODUCTION_CHECKLIST.md` and `docs/RELEASE_READINESS.md` for current verification and remaining external production gates. The numbered phases below preserve the original plan. Tic-tac-toe is now the first playable game: single matches, knockout, balanced points leagues, raised hands, spectators and room/personal scores. The four-seat room rules and docs/TIC_TAC_TOE.md supersede the older two-person/non-game scope below.
 
 ## 1. Product direction and scope precedence
 
