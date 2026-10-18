@@ -212,3 +212,23 @@ it('exports only personal data without authentication secrets or other authors m
   for (const field of ['passwordHash', 'recoveryHash', 'googleSubject', 'csrf', 'memberCode', 'invitationHash']) expect(serialized).not.toContain(field);
   const guest = await t.guest(); expect(() => t.rooms.exportAccount(guest.sessionId)).toThrow('Sign in'); t.advance(600001); expect(() => t.rooms.exportAccount(a.sessionId)).toThrow('sign out and sign in');
 });
+
+it('prepares both codes on saved-room creation and rotates them without changing room identity or access', async () => {
+  const t = await setup(); const owner = await t.account(), member = await t.account(), outsider = await t.guest();
+  const created = (await t.create(owner.sessionId)).room!;
+  expect(created.code).toMatch(/^[A-Z2-9]{10}$/);
+  expect(created.memberCode).toMatch(/^[A-Z2-9]{10}$/);
+  expect(created.memberCode).not.toBe(created.code);
+  await t.join(member.sessionId, created.memberCode);
+  const rotatedMember = (await t.command(owner.sessionId, 'memberInvite')).room!;
+  expect(rotatedMember.id).toBe(created.id);
+  expect(rotatedMember.members.some(m => m.accountId === t.rooms.view(member.sessionId).account!.id)).toBe(true);
+  await expect(t.join(outsider.sessionId, created.memberCode)).rejects.toMatchObject({ code: 'ROOM_UNAVAILABLE' });
+  const rotatedVisitor = (await t.command(owner.sessionId, 'regenerateInvite')).room!;
+  expect(rotatedVisitor.id).toBe(created.id);
+  await expect(t.join(outsider.sessionId, created.code)).rejects.toMatchObject({ code: 'ROOM_UNAVAILABLE' });
+  expect(t.rooms.view(member.sessionId).room!.id).toBe(created.id);
+  await t.join(outsider.sessionId, rotatedVisitor.code);
+  await t.command(owner.sessionId, 'regenerateInvite');
+  expect(t.rooms.view(outsider.sessionId).room!.id).toBe(created.id);
+});

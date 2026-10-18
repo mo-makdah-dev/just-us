@@ -623,9 +623,11 @@ export class Rooms {
       let code = roomCode();
       while (Object.values(this.state.rooms).some(r => (r.code === code || r.memberCode === code))) code = roomCode();
       const invitation = random();
+      let memberCode = '';
+      if (session.account) do { memberCode = roomCode(); } while (memberCode === code || Object.values(this.state.rooms).some(r => r.code === memberCode || r.memberCode === memberCode));
       const id = random();
       const player = { id: random(), sessionId, nickname: session.account?.nickname || input.nickname, avatar: session.account?.avatar || 'moss' as const, avatarDesign: session.account?.avatarDesign || null, seat: 1, disconnectedAt: this.clock(), joinedAt: this.clock() };
-      this.state.rooms[id] = { id, ownerId: player.id, invitationHash: hash(invitation), code, players: [player], revision: 1, createdAt: this.clock(), lastActive: this.clock(), admissionsOpen: true, theme: 'sage', ownerAccountId: session.account?.id || null, name: input.name ?? 'Our little room', members: session.account ? [session.account.id] : [], banned: [], ticTacToe: null, memberCode: '', memberUntil: 0, visitorUntil: this.clock() + (session.account ? 86400000 : policy.absolute), emptySince: this.online.get(sessionId)?.size ? null : this.clock(), lastPresenceAt: this.clock(), messages: [] };
+      this.state.rooms[id] = { id, ownerId: player.id, invitationHash: hash(invitation), code, players: [player], revision: 1, createdAt: this.clock(), lastActive: this.clock(), admissionsOpen: true, theme: 'sage', ownerAccountId: session.account?.id || null, name: input.name ?? 'Our little room', members: session.account ? [session.account.id] : [], banned: [], ticTacToe: null, memberCode, memberUntil: session.account ? this.clock() + 86400000 : 0, visitorUntil: this.clock() + (session.account ? 86400000 : policy.absolute), emptySince: this.online.get(sessionId)?.size ? null : this.clock(), lastPresenceAt: this.clock(), messages: [] };
       this.state.sessions[sessionId].roomId = id;
       return { ...this.current(sessionId), invitation };
     }));
