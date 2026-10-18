@@ -135,3 +135,18 @@ describe('authoritative room lifecycle', () => {
     expect(published).toBe(0); expect(rooms.view(auth.sessionId).room).toBeNull();
   });
 });
+
+it('trims and persists a supplied room name and rejects invalid names', async () => {
+  const { rooms, b, c } = await setup();
+  const input = { commandId: randomUUID(), nickname: 'Host', avatar: 'moss', name: '  Friday games  ' };
+  const created = await rooms.create(b.sessionId, input);
+  expect(created.room!.name).toBe('Friday games');
+  const restored = new Rooms(opened[opened.length - 1], () => 1_800_000_000_000);
+  await restored.init();
+  expect(restored.view(b.sessionId).room!.name).toBe('Friday games');
+  for (const name of ['   ', 'x'.repeat(41), 'Hidden\u0000room']) {
+    await expect(rooms.create(c.sessionId, { ...input, commandId: randomUUID(), name })).rejects.toThrow();
+  }
+  const defaultRoom = await rooms.create(c.sessionId, { commandId: randomUUID(), nickname: 'Guest', avatar: 'moss' });
+  expect(defaultRoom.room!.name).toBe('Our little room');
+});

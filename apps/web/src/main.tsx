@@ -61,6 +61,7 @@ function App() {
   const [recoveryCode, setRecoveryCode] = useState<string | null>(null);
   const [peopleToken, setPeopleToken] = useState<string | undefined>();
   const [page, setPage] = useState<'home' | 'account' | 'rooms'>(() => location.pathname === '/account' ? 'account' : ['/rooms', '/dashboard'].includes(location.pathname) ? 'rooms' : 'home');
+  const [roomName, setRoomName] = useState('');
   const [nickname, setNickname] = useState('');
   const [avatar, setAvatar] = useState<AvatarId>('moss');
   const [invite, setInvite] = useState('');
@@ -185,7 +186,7 @@ function App() {
   useEffect(() => { if (room) { setMode(null); } }, [room?.id]);
   useEffect(() => { if (session?.account && (location.pathname === '/rooms' || (location.pathname === '/' && !session.room))) { history.replaceState(null, '', '/dashboard'); setPage('rooms'); } }, [session?.account?.id, session?.room?.id]);
 
-  function begin(value: Mode) { setError(''); setMode(value); pending.current = null; }
+  function begin(value: Mode) { setRoomName(''); setError(''); setMode(value); pending.current = null; }
   function remember() { cache.remove('just-us-nickname'); cache.remove('just-us-avatar'); }
   function result(data: CommandResult) {
     if (data.invitation && data.room) cache.set(`just-us-invite:${data.room.id}`, data.invitation, true);
@@ -205,10 +206,10 @@ function App() {
       const cleaned = invite.trim();
       let invitation = cleaned;
       if (cleaned.includes('#invite=')) invitation = new URL(cleaned).hash.replace('#invite=', '');
-      const key = JSON.stringify({ mode, nickname: nickname.trim(), avatar, invitation });
+      const key = JSON.stringify({ mode, nickname: nickname.trim(), avatar, invitation, roomName: roomName.trim() });
       if (pending.current?.key !== key) pending.current = { key, id: crypto.randomUUID() };
       const data = await api<CommandResult>(mode === 'create' ? '/api/rooms' : '/api/join', session.csrf,
-        { commandId: pending.current.id, nickname: nickname.trim(), avatar, ...(mode === 'join' ? { invitation, asVisitor: !session.account } : {}) });
+        { commandId: pending.current.id, nickname: nickname.trim(), avatar, ...(mode === 'join' ? { invitation, asVisitor: !session.account } : { name: roomName.trim() || 'Our little room' }) });
       result(data); remember(); navigate('home'); setMode(null); setNotice('');
     } catch (e) { setError(e instanceof Error ? e.message : 'Please try again.'); }
     finally { setBusy(false); busyRef.current = false; }
@@ -281,7 +282,7 @@ function App() {
       <div className="dialog-inner"><button className="dialog-close icon-button" aria-label="Close dialog" disabled={busy} onClick={() => { setMode(null); setConfirm(null); setError(''); }}><Icon name="close" /></button>
         {confirm ? <><span className="eyebrow">UNTIL NEXT TIME</span><h2>{confirm === 'close' ? 'Close this little space?' : 'Heading out?'}</h2><p>{confirm === 'close' ? 'This deletes the room for everyone. You can always create a fresh one.' : 'You will give up your seat. Your person can stay and open a fresh invitation.'}</p>{error && <p className="form-error" role="alert">{error}</p>}<button className="button primary full" disabled={busy} onClick={() => command(confirm)}>{busy ? 'One moment…' : confirm === 'close' ? 'Close the room' : 'Leave the room'}</button><button className="button quiet full" disabled={busy} onClick={() => setConfirm(null)}>Stay a little longer</button></> : <form onSubmit={submit}><p className="eyebrow">{mode === 'create' ? 'MAKE YOURSELF AT HOME' : 'YOUR SEAT IS WAITING'}</p><h2>{mode === 'create' ? 'Start with a little you.' : 'Come on in.'}</h2><p className="dialog-description">{mode === 'create' ? 'A nickname, a pixel you, and you’re ready.' : 'Your person is just a room code away.'}</p>
           {!session?.account && <div className="room-auth-prompt"><span>Temporary visitor · nickname only</span><button type="button" className="text-button" onClick={() => openAuth('login')}>Sign in for saved membership & chat →</button></div>}
-          <label className="field-label" htmlFor="nickname">What should we call you?</label><input autoComplete="nickname" autoFocus id="nickname" placeholder="Your nickname" maxLength={24} required value={nickname} onChange={e => setNickname(e.target.value)} />
+          {mode === 'create' && <><label className="field-label" htmlFor="new-room-name">Room name</label><input id="new-room-name" placeholder="Our little room" maxLength={40} value={roomName} onChange={e => setRoomName(e.target.value)} /><p className="input-help">{session?.account ? 'Give your space a name. You can change it later in room settings.' : 'Give this visit a name.'}</p></>}<label className="field-label" htmlFor="nickname">What should we call you?</label><input autoComplete="nickname" autoFocus id="nickname" placeholder="Your nickname" maxLength={24} required value={nickname} onChange={e => setNickname(e.target.value)} />
           <p className="input-help">{session?.account ? 'Your nickname will also update on your saved profile. Edit your pixels in My account.' : 'Visitors use a temporary nickname and a standard avatar.'}</p>
           {mode === 'join' && <><label className="field-label" htmlFor="invitation">Room code or invite link</label><input id="invitation" placeholder="e.g. AB23 CD45 EF" required value={invite} maxLength={300} autoComplete="off" spellCheck={false} onChange={e => setInvite(e.target.value)} /></>}
           {error && <p className="form-error" role="alert">{error}</p>}<button className="button primary full submit-button" disabled={busy || !nickname.trim()}>{busy ? 'Making room…' : mode === 'create' ? 'Create our little room' : (session?.account ? 'Join their room' : 'Join as a visitor')}{!busy && <Icon name="arrow" />}</button><p className="dialog-footnote"><Icon name="lock" size={13} /> Visitor codes are single-use. Membership needs sign-in; joining as a visitor saves no membership.</p>
