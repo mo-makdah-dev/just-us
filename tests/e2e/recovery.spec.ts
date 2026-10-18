@@ -10,7 +10,7 @@ test('changes a password from compact settings without recovery or export UI', a
   await signup.getByRole('button', { name: 'Create my free account' }).click();
   await expect(page).toHaveURL(/dashboard$/);
   await expect(page.getByRole('dialog', { name: 'Save your recovery key' })).toHaveCount(0);
-  await page.getByRole('button', { name: /Account settings Security/ }).click();
+  await page.getByRole('link', { name: 'Account settings', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Download my data' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Sign out other sessions' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Change', exact: true }).click();

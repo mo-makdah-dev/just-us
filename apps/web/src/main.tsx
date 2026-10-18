@@ -14,6 +14,7 @@ import { GameLibrary } from './GameLibrary.js';
 import { saveAuthReturn, takeAuthReturn } from './authReturn.js';
 import { HelpDialog } from './Help.js';
 import { RoomsDirectory, RoomTools } from './Rooms.js';
+import { DashboardStats } from './DashboardStats.js';
 
 type Mode = 'create' | 'join';
 const cache = {
@@ -50,6 +51,7 @@ function RoomIllustration() {
 
 function App() {
   const [session, setSession] = useState<SessionView | null>(null);
+  const [route, setRoute] = useState(location.pathname + location.search);
   const [helpOpen, setHelpOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -102,7 +104,7 @@ function App() {
   }
   function navigate(value: 'home' | 'account' | 'rooms') {
     setPage(value); setMode(null); setConfirm(null); setError('');
-    history.pushState(null, '', value === 'account' ? '/account' : value === 'rooms' ? '/dashboard' : '/'); window.scrollTo({ top: 0 });
+    history.pushState(null, '', value === 'account' ? '/account' : value === 'rooms' ? '/dashboard' : '/'); setRoute(location.pathname + location.search); window.dispatchEvent(new PopStateEvent('popstate')); window.scrollTo({ top: 0 });
   }
   function openAuth(value: AuthMode = 'signup') { resumeMode.current = mode; setMode(null); setConfirm(null); setError(''); setAuthMode(value); }
   function signedSession(data: SessionView) {
@@ -135,7 +137,7 @@ function App() {
       else setError(status === 'conflict' ? 'This account already has a room in another browser. Your guest room has been kept.' : status === 'cancelled' ? 'Sign-in was cancelled. Your guest room is still here.' : 'Sign-in could not be completed. Your guest room is still here; please try again.');
     }
     reload().catch(e => setError(e.message)).finally(() => setLoading(false));
-    const popstate = () => setPage(location.pathname === '/account' ? 'account' : ['/rooms', '/dashboard'].includes(location.pathname) ? 'rooms' : 'home');
+    const popstate = () => { setRoute(location.pathname + location.search); setPage(location.pathname === '/account' ? 'account' : ['/rooms', '/dashboard'].includes(location.pathname) ? 'rooms' : 'home'); };
     window.addEventListener('popstate', popstate);
     return () => { window.removeEventListener('popstate', popstate); window.removeEventListener('hashchange', consumeLink); };
   }, []);
@@ -239,17 +241,17 @@ function App() {
   }
   function openAccount(section = 'profile') {
     history.pushState(null, '', '/account?section=' + section);
-    setPage('account'); setMode(null); window.scrollTo({ top: 0 });
+    setPage('account'); setMode(null); setRoute(location.pathname + location.search); window.dispatchEvent(new PopStateEvent('popstate')); window.scrollTo({ top: 0 });
   }
   const dashboard = session?.account ? <section className="dashboard" aria-label="Your dashboard">
     <div className="dashboard-heading"><div><p className="eyebrow">YOUR DASHBOARD</p><h1>Welcome home, <em>{session.account.nickname}.</em></h1><p>Your people and your places, all together.</p></div><button className="dashboard-profile" onClick={() => openAccount()} aria-label="Edit your profile and avatar"><span className="dashboard-portrait"><Avatar id={session.account.avatar} design={session.account.avatarDesign} /><span className="portrait-edit" aria-hidden="true">✎</span></span><strong>{session.account.nickname}</strong></button></div>
-    <nav className="dashboard-shortcuts" aria-label="Your space"><button onClick={() => openAccount('people')}><span aria-hidden="true">♡</span><strong>Your people</strong><small>Friends & your special person</small><span aria-hidden="true">↗</span></button><button onClick={() => openAccount('scores')}><span aria-hidden="true">✦</span><strong>Your scores</strong><small>A little friendly competition</small><span aria-hidden="true">↗</span></button><button onClick={() => openAccount('security')}><Icon name="lock" /><strong>Account settings</strong><small>Security & sign-in</small><span aria-hidden="true">↗</span></button></nav>
+    <DashboardStats session={session} />
     <RoomsDirectory embedded session={session} onAuth={() => openAuth('login')} onCreate={() => begin('create')} onJoin={() => begin('join')} onEntered={data => { result(data); navigate('home'); }} />
   </section> : null;
   const disabled = busy || connection !== 'online';
 
   return <>
-    <header className="site-header"><a className="wordmark" href="/" onClick={event => { event.preventDefault(); navigate(session?.account ? 'rooms' : 'home'); }} aria-label="Just Us home"><span className="brand-mark">ju<span>✦</span></span>just us<span className="brand-period">.</span></a><nav className="header-account" aria-label="Account">{session?.account ? <><button className="text-button" onClick={() => navigate('rooms')}>Dashboard</button><button className="account-nav-button" onClick={() => navigate('account')}><Avatar id={session.account.avatar} design={session.account.avatarDesign} /><span>{session.account.nickname}</span></button></> : <><button className="text-button header-signin" disabled={!session} onClick={() => openAuth('login')}>Sign in</button><button className="button header-join" disabled={!session} onClick={() => openAuth('signup')}>Join free <span aria-hidden="true">↗</span></button></>}</nav></header>
+    <header className="site-header"><a className="wordmark" href="/" onClick={event => { event.preventDefault(); navigate(session?.account ? 'rooms' : 'home'); }} aria-label="Just Us home"><span className="brand-mark">ju<span>✦</span></span>just us<span className="brand-period">.</span></a><nav className="header-account" aria-label="Account">{session?.account ? <><a href="/dashboard" className="header-nav-link" aria-current={page === 'rooms' || (page === 'home' && !room) ? 'page' : undefined} onClick={event => { if (event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); navigate('rooms'); }}>Dashboard</a><a href="/account?section=people" className="header-nav-link" aria-current={page === 'account' && route.includes('section=people') ? 'page' : undefined} onClick={event => { if (event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); openAccount('people'); }}>Your people</a><a href="/account?section=scores" className="header-nav-link" aria-current={page === 'account' && route.includes('section=scores') ? 'page' : undefined} onClick={event => { if (event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); openAccount('scores'); }}>Your scores</a><a href="/account?section=security" className="header-nav-link" aria-current={page === 'account' && route.includes('section=security') ? 'page' : undefined} onClick={event => { if (event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); openAccount('security'); }}>Account settings</a><button className="account-nav-button" onClick={() => navigate('account')}><Avatar id={session.account.avatar} design={session.account.avatarDesign} /><span>{session.account.nickname}</span></button></> : <><button className="text-button header-signin" disabled={!session} onClick={() => openAuth('login')}>Sign in</button><button className="button header-join" disabled={!session} onClick={() => openAuth('signup')}>Join free <span aria-hidden="true">↗</span></button></>}</nav></header>
     <main id="main">{connection === 'conflict' && <div className="connection-banner" role="status">Your session changed or this seat is open in another tab. Close the other tab if needed, then refresh.<button className="text-button" onClick={() => location.reload()}>Refresh session</button></div>}
       {loading ? <section className="loading-state" role="status"><span className="loader" />Making a little room for you…</section> : page === 'rooms' && session?.account ? dashboard : page === 'rooms' ? <RoomsDirectory session={session} onAuth={() => openAuth('login')} onCreate={() => begin('create')} onJoin={() => begin('join')} onEntered={data => { result(data); navigate('home'); }} /> : page === 'account' ? <AccountPage inviteToken={peopleToken} onConsumed={() => setPeopleToken(undefined)} onRecovery={setRecoveryCode} session={session} onSession={signedSession} onAuth={openAuth} onHome={() => navigate(session?.account ? 'rooms' : 'home')} onPending={value => { authPending.current = value; busyRef.current = value; }} /> : !room && session?.account ? dashboard : !room ? <>
 
