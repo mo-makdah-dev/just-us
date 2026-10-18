@@ -88,7 +88,7 @@ export function AccountPage({ session, onSession, onAuth, onHome, onPending, inv
   const account = session?.account;
   const [nickname, setNickname] = useState(account?.nickname || ''); const [avatar, setAvatar] = useState<AvatarId>(account?.avatar || 'moss');
   const [design, setDesign] = useState<AvatarDesign | null>(account?.avatarDesign || null);
-  const [tab, setTab] = useState<'profile' | 'people' | 'security' | 'scores'>(inviteToken || new URLSearchParams(location.search).get('section') === 'people' ? 'people' : 'profile');
+  const [tab, setTab] = useState<'profile' | 'people' | 'security' | 'scores'>(inviteToken ? 'people' : (['people', 'scores', 'security'] as const).find(section => section === new URLSearchParams(location.search).get('section')) ?? 'profile');
   useEffect(() => { if (inviteToken) setTab('people'); }, [inviteToken]);
   const [busy, setBusy] = useState(false); const [message, setMessage] = useState(''); const [error, setError] = useState(''); const [deleting, setDeleting] = useState(false); const [confirmation, setConfirmation] = useState('');
   useEffect(() => { setNickname(account?.nickname || ''); setAvatar(account?.avatar || 'moss'); setDesign(account?.avatarDesign || null); setMessage(''); setDeleting(false); setConfirmation(''); }, [account?.id]);
