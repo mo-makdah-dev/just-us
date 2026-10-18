@@ -65,13 +65,18 @@ describe('authoritative room lifecycle', () => {
     await rooms.join(c.sessionId, { commandId: randomUUID(), nickname: 'C', avatar: 'sky', invitation: changed.invitation });
     expect(rooms.view(c.sessionId).room!.id).toBe(created.room!.id);
   });
-  it('preserves a refreshing participant and refuses concurrent tabs for one seat', async () => {
+  it('shares one seat across concurrent tabs and stays online until the last closes', async () => {
     const { rooms, a } = await setup();
-    await expect(rooms.connect(a.sessionId, 'a2')).rejects.toMatchObject({ code: 'SEAT_IN_USE' });
-    await rooms.disconnect(a.sessionId, 'a');
-    const reclaims = await Promise.allSettled([rooms.connect(a.sessionId, 'a2'), rooms.connect(a.sessionId, 'a3')]);
-    expect(reclaims.filter(r => r.status === 'fulfilled')).toHaveLength(1);
+    await Promise.all([rooms.connect(a.sessionId, 'a2'), rooms.connect(a.sessionId, 'a3')]);
     expect(rooms.view(a.sessionId).room!.players).toHaveLength(1);
+    await rooms.disconnect(a.sessionId, 'a');
+    await rooms.disconnect(a.sessionId, 'a2');
+    expect(rooms.view(a.sessionId).room!.players[0].connected).toBe(true);
+    await rooms.disconnect(a.sessionId, 'a3');
+    expect(rooms.view(a.sessionId).room!.players[0].connected).toBe(false);
+    await Promise.all([rooms.connect(a.sessionId, 'a4'), rooms.connect(a.sessionId, 'a5')]);
+    expect(rooms.view(a.sessionId).room!.players).toHaveLength(1);
+    expect(rooms.view(a.sessionId).room!.players[0].connected).toBe(true);
   });
   it('removes an absent seat after grace and transfers ownership without admitting strangers', async () => {
     const { rooms, a, b, joinInput, advance } = await setup();

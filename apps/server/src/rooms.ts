@@ -717,27 +717,27 @@ export class Rooms {
 
   async connect(sessionId: string, connectionId: string) {
     if (!this.validSession(sessionId)) throw new AppError('SESSION_EXPIRED', 'Refresh to reconnect.', 401);
-    const existing = this.online.get(sessionId);
-    if (existing?.size || this.connecting.has(sessionId)) throw new AppError('SEAT_IN_USE', 'This browser session is connected in another tab. Close it, then reconnect here.', 409);
-    this.connecting.add(sessionId);
     // Cleanup happens before marking this participant online, so missed grace periods are respected.
     try {
       await this.transact(() => {});
-      this.online.set(sessionId, new Set([connectionId]));
+      const connections = this.online.get(sessionId) ?? new Set<string>();
+      connections.add(connectionId);
+      this.online.set(sessionId, connections);
       await this.transact(() => {
         const roomId = this.state.sessions[sessionId]?.roomId;
         const room = roomId ? this.state.rooms[roomId] : undefined;
         const player = room?.players.find(p => p.sessionId === sessionId);
         if (player) { player.disconnectedAt = null; room!.emptySince = null; room!.revision++; }
       });
-    } catch (e) { this.online.delete(sessionId); throw e; }
-    finally { this.connecting.delete(sessionId); }
+    } catch (e) { const connections = this.online.get(sessionId); connections?.delete(connectionId); if (!connections?.size) this.online.delete(sessionId); throw e; }
   }
   async disconnect(sessionId: string, connectionId: string) {
     const set = this.online.get(sessionId);
     if (!set?.delete(connectionId)) return;
-    if (set.size === 0) this.online.delete(sessionId);
+    if (set.size > 0) return;
+    this.online.delete(sessionId);
     await this.transact(() => {
+      if (this.online.get(sessionId)?.size) return;
       const id = this.state.sessions[sessionId]?.roomId;
       const room = id ? this.state.rooms[id] : undefined;
       const player = room?.players.find(p => p.sessionId === sessionId);

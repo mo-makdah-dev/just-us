@@ -8,7 +8,6 @@ async function register(page: Page, nickname: string) {
   await dialog.getByLabel('Password', { exact: true }).fill('a unique browser test password');
   await dialog.getByLabel('Nickname', { exact: true }).fill(nickname);
   await dialog.getByRole('button', { name: 'Create my free account' }).click();
-  await page.getByRole('button', { name: 'I’ve saved my recovery key' }).click();
   await page.getByRole('button', { name: 'My account', exact: true }).first().click();
 }
 const a11y = async (page: Page) => {

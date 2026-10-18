@@ -19,7 +19,6 @@ async function signup(page: Page, name: string) {
   await dialog.getByLabel('Username', { exact: true }).fill(`ttt_${name}_${Date.now()}`);
   await dialog.getByLabel('Password', { exact: true }).fill('a unique game test password');
   await dialog.getByLabel('Nickname', { exact: true }).fill(name); await dialog.getByRole('button', { name: 'Create my free account' }).click();
-  await page.getByRole('button', { name: 'I’ve saved my recovery key' }).click();
 }
 test('a guest owner selects two other players; spectators watch, refresh restores play and rematches swap sides', async ({ browser }) => {
   test.setTimeout(90000);

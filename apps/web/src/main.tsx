@@ -58,7 +58,7 @@ function App() {
   const [authMode, setAuthMode] = useState<AuthMode | null>(null);
   const [recoveryCode, setRecoveryCode] = useState<string | null>(null);
   const [peopleToken, setPeopleToken] = useState<string | undefined>();
-  const [page, setPage] = useState<'home' | 'account' | 'rooms'>(() => location.pathname === '/account' ? 'account' : location.pathname === '/rooms' ? 'rooms' : 'home');
+  const [page, setPage] = useState<'home' | 'account' | 'rooms'>(() => location.pathname === '/account' ? 'account' : ['/rooms', '/dashboard'].includes(location.pathname) ? 'rooms' : 'home');
   const [nickname, setNickname] = useState('');
   const [avatar, setAvatar] = useState<AvatarId>('moss');
   const [invite, setInvite] = useState('');
@@ -76,6 +76,7 @@ function App() {
   const authPending = useRef(false);
   const resumeMode = useRef<Mode | null>(null);
   const dialog = useRef<HTMLDialogElement>(null);
+  const backdropPress = useRef(false);
   const modalActive = mode !== null || confirm !== null;
   const room = session?.room ?? null;
   useEffect(() => { setLibraryOpen(false); setRoomTab('room'); }, [room?.id]);
@@ -101,11 +102,11 @@ function App() {
   }
   function navigate(value: 'home' | 'account' | 'rooms') {
     setPage(value); setMode(null); setConfirm(null); setError('');
-    history.pushState(null, '', value === 'account' ? '/account' : value === 'rooms' ? '/rooms' : '/'); window.scrollTo({ top: 0 });
+    history.pushState(null, '', value === 'account' ? '/account' : value === 'rooms' ? '/dashboard' : '/'); window.scrollTo({ top: 0 });
   }
   function openAuth(value: AuthMode = 'signup') { resumeMode.current = mode; setMode(null); setConfirm(null); setError(''); setAuthMode(value); }
   function signedSession(data: SessionView) {
-    if (data.recoveryCode) { setRecoveryCode(data.recoveryCode); data = { ...data, recoveryCode: undefined }; }
+    if (data.recoveryCode) { data = { ...data, recoveryCode: undefined }; }
     if (data.csrf !== session?.csrf) socket.current?.disconnect();
     setSession(data); setError('');
     if (resumeMode.current && !data.room) { setMode(resumeMode.current); resumeMode.current = null; }
@@ -134,7 +135,7 @@ function App() {
       else setError(status === 'conflict' ? 'This account already has a room in another browser. Your guest room has been kept.' : status === 'cancelled' ? 'Sign-in was cancelled. Your guest room is still here.' : 'Sign-in could not be completed. Your guest room is still here; please try again.');
     }
     reload().catch(e => setError(e.message)).finally(() => setLoading(false));
-    const popstate = () => setPage(location.pathname === '/account' ? 'account' : location.pathname === '/rooms' ? 'rooms' : 'home');
+    const popstate = () => setPage(location.pathname === '/account' ? 'account' : ['/rooms', '/dashboard'].includes(location.pathname) ? 'rooms' : 'home');
     window.addEventListener('popstate', popstate);
     return () => { window.removeEventListener('popstate', popstate); window.removeEventListener('hashchange', consumeLink); };
   }, []);
@@ -180,6 +181,7 @@ function App() {
     if (!modalActive && dialog.current.open) dialog.current.close();
   }, [modalActive]);
   useEffect(() => { if (room) { setMode(null); } }, [room?.id]);
+  useEffect(() => { if (session?.account && (location.pathname === '/rooms' || (location.pathname === '/' && !session.room))) { history.replaceState(null, '', '/dashboard'); setPage('rooms'); } }, [session?.account?.id, session?.room?.id]);
 
   function begin(value: Mode) { setError(''); setMode(value); pending.current = null; }
   function remember() { cache.remove('just-us-nickname'); cache.remove('just-us-avatar'); }
@@ -236,7 +238,7 @@ function App() {
     return token ? `${window.location.origin}/#invite=${token}` : null;
   }
   function openAccount(section = 'profile') {
-    history.replaceState(null, '', '/account?section=' + section);
+    history.pushState(null, '', '/account?section=' + section);
     setPage('account'); setMode(null); window.scrollTo({ top: 0 });
   }
   const dashboard = session?.account ? <section className="dashboard" aria-label="Your dashboard">
@@ -247,9 +249,9 @@ function App() {
   const disabled = busy || connection !== 'online';
 
   return <>
-    <header className="site-header"><a className="wordmark" href="/" onClick={event => { event.preventDefault(); navigate('home'); }} aria-label="Just Us home"><span className="brand-mark">ju<span>✦</span></span>just us<span className="brand-period">.</span></a><nav className="header-account" aria-label="Account"><span className="header-note"><Icon name="lock" size={14} /> a little space for your people</span>{session?.account ? <><button className="text-button" onClick={() => navigate('rooms')}>Dashboard</button><button className="account-nav-button" onClick={() => navigate('account')}><Avatar id={session.account.avatar} design={session.account.avatarDesign} /><span>{session.account.nickname}</span></button></> : <><button className="text-button header-signin" disabled={!session} onClick={() => openAuth('login')}>Sign in</button><button className="button header-join" disabled={!session} onClick={() => openAuth('signup')}>Join free <span aria-hidden="true">↗</span></button></>}</nav></header>
+    <header className="site-header"><a className="wordmark" href="/" onClick={event => { event.preventDefault(); navigate(session?.account ? 'rooms' : 'home'); }} aria-label="Just Us home"><span className="brand-mark">ju<span>✦</span></span>just us<span className="brand-period">.</span></a><nav className="header-account" aria-label="Account">{session?.account ? <><button className="text-button" onClick={() => navigate('rooms')}>Dashboard</button><button className="account-nav-button" onClick={() => navigate('account')}><Avatar id={session.account.avatar} design={session.account.avatarDesign} /><span>{session.account.nickname}</span></button></> : <><button className="text-button header-signin" disabled={!session} onClick={() => openAuth('login')}>Sign in</button><button className="button header-join" disabled={!session} onClick={() => openAuth('signup')}>Join free <span aria-hidden="true">↗</span></button></>}</nav></header>
     <main id="main">{connection === 'conflict' && <div className="connection-banner" role="status">Your session changed or this seat is open in another tab. Close the other tab if needed, then refresh.<button className="text-button" onClick={() => location.reload()}>Refresh session</button></div>}
-      {loading ? <section className="loading-state" role="status"><span className="loader" />Making a little room for you…</section> : page === 'rooms' && session?.account ? dashboard : page === 'rooms' ? <RoomsDirectory session={session} onAuth={() => openAuth('login')} onCreate={() => begin('create')} onJoin={() => begin('join')} onEntered={data => { result(data); navigate('home'); }} /> : page === 'account' ? <AccountPage inviteToken={peopleToken} onConsumed={() => setPeopleToken(undefined)} onRecovery={setRecoveryCode} session={session} onSession={signedSession} onAuth={openAuth} onHome={() => navigate('home')} onPending={value => { authPending.current = value; busyRef.current = value; }} /> : !room && session?.account ? dashboard : !room ? <>
+      {loading ? <section className="loading-state" role="status"><span className="loader" />Making a little room for you…</section> : page === 'rooms' && session?.account ? dashboard : page === 'rooms' ? <RoomsDirectory session={session} onAuth={() => openAuth('login')} onCreate={() => begin('create')} onJoin={() => begin('join')} onEntered={data => { result(data); navigate('home'); }} /> : page === 'account' ? <AccountPage inviteToken={peopleToken} onConsumed={() => setPeopleToken(undefined)} onRecovery={setRecoveryCode} session={session} onSession={signedSession} onAuth={openAuth} onHome={() => navigate(session?.account ? 'rooms' : 'home')} onPending={value => { authPending.current = value; busyRef.current = value; }} /> : !room && session?.account ? dashboard : !room ? <>
 
         <section className="hero">
           <div className="hero-copy"><p className="eyebrow"><span /> A LITTLE CLOSER, WHEREVER YOU ARE</p><h1>Different places.<br /><em>Same us.</em></h1><p className="hero-description">Your own little corner of the internet.<br className="desktop-break" /> Bring your favourite person. We’ll save you a seat.</p>
@@ -272,8 +274,8 @@ function App() {
       {!loading && !session && <div className="retry-panel"><button className="button secondary" onClick={() => { setLoading(true); setError(''); reload().catch(e => setError(e.message)).finally(() => setLoading(false)); }}>Try connecting again</button></div>}
     </main>
     <GameLibrary open={libraryOpen && !!room} onClose={() => setLibraryOpen(false)} canPlay={!!room?.isOwner && !disabled} onPlay={() => { setNotice(''); setLibraryOpen(false); setRoomTab('room'); void command('ticTacToe', undefined, { game: { action: 'open' } }).then(ok => { if (ok) window.scrollTo({ top: 0 }); }); }} />
-    <HelpDialog open={helpOpen} onClose={() => setHelpOpen(false)} /><footer className="site-footer"><button className="text-button" onClick={() => setHelpOpen(true)}>Help & your data</button><span>just us. <span className="footer-dash">—</span> a little closer.</span><button className="text-button" onClick={() => navigate('account')}>{session?.account ? 'Your account' : 'A free account. A little more us. →'}</button></footer>
-    <dialog ref={dialog} className="dialog" aria-label={confirm ? 'Confirm room action' : mode === 'create' ? 'Create a room' : 'Join a room'} onCancel={event => { if (busy) { event.preventDefault(); return; } setMode(null); setConfirm(null); setError(''); }}>
+    <HelpDialog open={helpOpen} onClose={() => setHelpOpen(false)} />
+    <dialog ref={dialog} onPointerDown={event => { const r = event.currentTarget.getBoundingClientRect(); backdropPress.current = event.target === event.currentTarget && (event.clientX < r.left || event.clientX > r.right || event.clientY < r.top || event.clientY > r.bottom); }} onClick={event => { if (backdropPress.current && event.target === event.currentTarget && !busy) { const rect = event.currentTarget.getBoundingClientRect(); if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) { setMode(null); setConfirm(null); setError(''); } } }} className="dialog" aria-label={confirm ? 'Confirm room action' : mode === 'create' ? 'Create a room' : 'Join a room'} onCancel={event => { if (busy) { event.preventDefault(); return; } setMode(null); setConfirm(null); setError(''); }}>
       <div className="dialog-inner"><button className="dialog-close icon-button" aria-label="Close dialog" disabled={busy} onClick={() => { setMode(null); setConfirm(null); setError(''); }}><Icon name="close" /></button>
         {confirm ? <><span className="eyebrow">UNTIL NEXT TIME</span><h2>{confirm === 'close' ? 'Close this little space?' : 'Heading out?'}</h2><p>{confirm === 'close' ? 'This deletes the room for everyone. You can always create a fresh one.' : 'You will give up your seat. Your person can stay and open a fresh invitation.'}</p>{error && <p className="form-error" role="alert">{error}</p>}<button className="button primary full" disabled={busy} onClick={() => command(confirm)}>{busy ? 'One moment…' : confirm === 'close' ? 'Close the room' : 'Leave the room'}</button><button className="button quiet full" disabled={busy} onClick={() => setConfirm(null)}>Stay a little longer</button></> : <form onSubmit={submit}><p className="eyebrow">{mode === 'create' ? 'MAKE YOURSELF AT HOME' : 'YOUR SEAT IS WAITING'}</p><h2>{mode === 'create' ? 'Start with a little you.' : 'Come on in.'}</h2><p className="dialog-description">{mode === 'create' ? 'A nickname, a pixel you, and you’re ready.' : 'Your person is just a room code away.'}</p>
           {!session?.account && <div className="room-auth-prompt"><span>Temporary visitor · nickname only</span><button type="button" className="text-button" onClick={() => openAuth('login')}>Sign in for saved membership & chat →</button></div>}

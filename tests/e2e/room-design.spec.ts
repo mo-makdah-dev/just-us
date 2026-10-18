@@ -14,7 +14,6 @@ test('calm mobile room keeps the library and conversation separate, with live me
       await dialog.getByLabel('Password', { exact: true }).fill('a unique design password');
       await dialog.getByLabel('Nickname', { exact: true }).fill(name);
       await dialog.getByRole('button', { name: 'Create my free account' }).click();
-      await page.getByRole('button', { name: 'I’ve saved my recovery key' }).click();
     }
     await a.getByRole('button', { name: 'Create a room', exact: true }).click();
     await a.getByRole('button', { name: 'Create our little room' }).click();

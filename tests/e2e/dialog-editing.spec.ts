@@ -26,11 +26,10 @@ test('signed-in players can edit their nickname when creating a room', async ({ 
   await signup.getByLabel('Password', { exact: true }).fill('a unique test password');
   await signup.getByLabel('Nickname', { exact: true }).fill('Original name');
   await signup.getByRole('button', { name: 'Create my free account' }).click();
-  await page.getByRole('button', { name: 'I’ve saved my recovery key' }).click();
   await page.getByRole('button', { name: 'Create a room', exact: true }).click();
   await page.getByLabel('What should we call you?').fill('Updated name');
   await page.getByRole('button', { name: 'Create our little room' }).click();
   await expect(page.getByRole('heading', { name: /Updated name/ })).toBeVisible();
-  await page.getByRole('button', { name: 'My account', exact: true }).first().click();
+  await page.locator('.account-nav-button').click();
   await expect(page.getByLabel('Nickname', { exact: true })).toHaveValue('Updated name');
 });

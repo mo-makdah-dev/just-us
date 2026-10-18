@@ -12,11 +12,11 @@ Node 24 LTS is required. Dependencies are already installed in this checkout.
 npm run dev
 ```
 
-Open **http://localhost:3210**. Create a room in your normal browser, then open a private/incognito window to join with the code. Two ordinary tabs share one identity and intentionally cannot occupy both seats.
+Open **http://localhost:3210** and sign in with your online username/password. The local frontend uses the hosted API and live PostgreSQL data. Profile, room and other changes affect the online database immediately. Frontend edits refresh locally; backend changes still need deployment. Browser sessions are separate, so sign in once on localhost. Google sign-in uses the hosted site. See [local online-data mode](docs/LOCAL_ONLINE_DATA.md).
 
 Alternatively double-click **Start Just Us.cmd**. It waits for the website to be ready, or reuses an existing healthy Just Us server. Keep the server terminal open; close it to stop the server. The launcher never installs dependencies automatically.
 
-No cloud account, database installation, Docker, domain, or credit card is needed for local rooms or username accounts. Local state is stored under `%LOCALAPPDATA%/JustUs/rooms.sqlite` on Windows, outside OneDrive. First startup copies the original temporary guest database there if it exists; the original is retained. Set `SQLITE_PATH` in `.env` to override this path. Node's built-in SQLite API currently emits an experimental warning; PostgreSQL is required in production.
+For isolated offline/backend development, run `npm run dev:isolated`. This separate mode needs no cloud account, database installation, Docker, domain, or credit card. Its local state is stored under `%LOCALAPPDATA%/JustUs/rooms.sqlite` on Windows, outside OneDrive. First startup copies the original temporary guest database there if it exists; the original is retained. Set `SQLITE_PATH` in `.env` to override this path. Node's built-in SQLite API currently emits an experimental warning; PostgreSQL is required in production.
 
 ## Included
 
@@ -44,7 +44,7 @@ npm run test:e2e
 npm start
 ```
 
-`npm start` serves the production frontend build locally. `npm run dev` serves the same server with Vite development middleware. Browser tests launch a separate test server on port 3211 and temporary isolated SQLite data. Integration tests use temporary ephemeral servers and in-memory databases. Neither test suite needs production credentials.
+`npm start` serves the production frontend build locally. `npm run dev` serves local frontend source with the hosted API. `npm run dev:isolated` runs a separate local backend and SQLite database with Vite development middleware. Browser tests launch a separate test server on port 3211 and temporary isolated SQLite data. Integration tests use temporary ephemeral servers and in-memory databases. Neither test suite needs production credentials.
 
 Source layout follows [PROJECT_PLAN.md](PROJECT_PLAN.md). Shared browser protocol types contain no canonical private state. Future game rules use `packages/game-core` and register independently; no game is registered yet.
 

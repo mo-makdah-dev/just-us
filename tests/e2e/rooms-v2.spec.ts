@@ -8,7 +8,6 @@ async function register(page: Page, name: string) {
   await dialog.getByLabel('Password', { exact: true }).fill('a unique new rooms password');
   await dialog.getByLabel('Nickname', { exact: true }).fill(name);
   await dialog.getByRole('button', { name: 'Create my free account' }).click();
-  await page.getByRole('button', { name: 'I’ve saved my recovery key' }).click();
   await page.getByRole('button', { name: 'My account', exact: true }).first().click();
 }
 test('saved rooms, accepted friend invites, four seats, private chat and guest membership fallback work on phones', async ({ browser }) => {
@@ -22,7 +21,7 @@ test('saved rooms, accepted friend invites, four seats, private chat and guest m
     const invite = await a.getByLabel('Private invitation link', { exact: true }).inputValue();
     await b.goto(invite); await b.getByRole('button', { name: 'Accept friend invitation' }).click();
     await expect(b.getByRole('heading', { name: 'Alice', exact: true })).toBeVisible();
-    await a.getByRole('button', { name: 'My rooms', exact: true }).click();
+    await a.getByRole('button', { name: 'Dashboard', exact: true }).click();
     await a.getByRole('button', { name: 'Create a room', exact: true }).click();
     await a.getByRole('button', { name: 'Create our little room' }).click();
     await expect(a.getByText('Room connected', { exact: true })).toBeVisible();
@@ -32,8 +31,8 @@ test('saved rooms, accepted friend invites, four seats, private chat and guest m
     await roomOptions(a, 'Invite someone');
     await a.getByLabel('Invite an accepted friend').selectOption({ label: 'Bob' });
     await a.getByRole('button', { name: 'Send room invitation', exact: true }).click();
-    await expect(a.getByText('Invitation sent to their My rooms inbox.')).toBeVisible();
-    await b.getByRole('button', { name: 'My rooms', exact: true }).click();
+    await expect(a.getByText('Invitation sent to their dashboard.')).toBeVisible();
+    await b.getByRole('button', { name: 'Dashboard', exact: true }).click();
     await b.getByRole('button', { name: 'Accept room invitation', exact: true }).click();
     await expect(b.getByText('Room connected', { exact: true })).toBeVisible();
     await roomView(a, 'chat'); await roomView(b, 'chat');
@@ -47,8 +46,8 @@ test('saved rooms, accepted friend invites, four seats, private chat and guest m
     await roomView(visitor, 'chat');
     await expect(visitor.getByRole('button', { name: 'Sign in to use chat' })).toBeVisible();
     expect((await visitor.evaluate(async () => (await (await fetch('/api/session')).json()).data.room.messages))).toEqual([]);
-    await b.getByRole('button', { name: 'My rooms', exact: true }).click(); await b.getByRole('button', { name: 'Create a room', exact: true }).click(); await b.getByRole('button', { name: 'Create our little room' }).click();
-    await expect(b.getByText('Room connected', { exact: true })).toBeVisible(); await b.getByRole('button', { name: 'My rooms', exact: true }).click();
+    await b.getByRole('button', { name: 'Dashboard', exact: true }).click(); await b.getByRole('button', { name: 'Create a room', exact: true }).click(); await b.getByRole('button', { name: 'Create our little room' }).click();
+    await expect(b.getByText('Room connected', { exact: true })).toBeVisible(); await b.getByRole('button', { name: 'Dashboard', exact: true }).click();
     await expect(b.locator('.saved-room-card')).toHaveCount(2);
     await b.locator('.saved-room-card').filter({ hasText: 'Our Sunday room' }).getByRole('button', { name: 'Enter room', exact: true }).click();
     await expect(b.getByText('Members remember this', { exact: true })).toBeVisible();
@@ -67,8 +66,8 @@ test('saved rooms, accepted friend invites, four seats, private chat and guest m
     await visitor.screenshot({ path: 'test-results/four-person-phone.png', fullPage: true }); await a.screenshot({ path: 'test-results/saved-room-desktop.png', fullPage: true });
     await roomOptions(a, 'People & access');
     await a.locator('.room-roster > div').filter({ hasText: 'Bob' }).getByRole('button', { name: 'Remove', exact: true }).click(); await a.getByRole('button', { name: 'Confirm remove', exact: true }).click();
-    await expect(b.getByRole('heading', { name: /Different places/ })).toBeVisible(); await b.getByRole('button', { name: 'My rooms', exact: true }).click();
+    await expect(b.getByRole('heading', { name: /Different places/ })).toBeVisible(); await b.getByRole('button', { name: 'Dashboard', exact: true }).click();
     await expect(b.locator('.saved-room-card').filter({ hasText: 'Our Sunday room' })).toHaveCount(0);
-    await a.getByRole('button', { name: 'My rooms', exact: true }).click(); await a.reload(); await expect(a.getByRole('heading', { name: 'Our Sunday room', exact: true })).toBeVisible();
+    await a.getByRole('button', { name: 'Dashboard', exact: true }).click(); await a.reload(); await expect(a.getByRole('heading', { name: 'Our Sunday room', exact: true })).toBeVisible();
   } finally { await Promise.all(contexts.map(c => c.close())); }
 });

@@ -11,7 +11,7 @@ async function probe() {
   try {
     const response = await fetch(`${url}/health`, { signal: AbortSignal.timeout(1500) });
     const body = await response.json().catch(() => null);
-    return body?.ok === true && body?.service === 'just-us' ? 'ours' : 'occupied';
+    return body?.ok === true && body?.service === 'just-us' ? (body.mode === 'online-data' ? 'ours' : 'isolated') : 'occupied';
   } catch (error) {
     return error?.cause?.code === 'ECONNREFUSED' ? 'absent' : 'occupied';
   }
@@ -28,12 +28,15 @@ const status = await probe();
 if (status === 'ours') {
   console.log('Just Us is already running. Reusing the existing server.');
   openBrowser();
+} else if (status === 'isolated') {
+  console.error('The isolated server is running. Close it and start Just Us again to use online data.');
+  process.exitCode = 1;
 } else if (status === 'occupied') {
   console.error(`Another service is using port ${port}, or the existing server is not responding. Close it and try again.`);
   process.exitCode = 1;
 } else {
   console.log('Starting Just Us. Keep this window open while testing.');
-  const server = spawn(process.execPath, ['--import', 'tsx', 'apps/server/src/index.ts', '--dev'], { stdio: 'inherit', windowsHide: true });
+  const server = spawn(process.execPath, ['--import', 'tsx', 'scripts/live-preview.ts'], { stdio: 'inherit', windowsHide: true });
   let stopped = false;
   server.on('exit', code => { stopped = true; process.exitCode = code ?? 1; });
   server.on('error', error => { stopped = true; console.error(error.message); process.exitCode = 1; });
