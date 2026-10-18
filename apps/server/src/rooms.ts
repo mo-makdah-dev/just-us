@@ -559,7 +559,11 @@ export class Rooms {
   directory(sessionId: string): RoomDirectoryView {
     const account = this.requireAccount(sessionId);
     return {
-      rooms: Object.values(this.state.rooms).filter(room => room.members.includes(account.id)).map(room => ({ id: room.id, name: room.name, owner: room.ownerAccountId === account.id, memberCount: room.members.length, activeCount: room.players.filter(p => this.isOnline(p)).length, current: this.state.sessions[sessionId].roomId === room.id })),
+      rooms: Object.values(this.state.rooms).filter(room => room.members.includes(account.id)).map(room => ({ id: room.id, name: room.name, owner: room.ownerAccountId === account.id, memberCount: room.members.length, activeCount: room.players.filter(p => this.isOnline(p)).length, current: this.state.sessions[sessionId].roomId === room.id, theme: room.theme,
+        people: [
+          ...room.members.flatMap(id => { const person = this.state.accounts[id]; return person ? [{ id, nickname: person.nickname, avatar: person.avatar, avatarDesign: person.avatarDesign, here: room.players.some(p => this.state.sessions[p.sessionId]?.accountId === id && this.isOnline(p)), member: true, admin: room.ownerAccountId === id }] : []; }),
+          ...room.players.filter(p => !room.members.includes(this.state.sessions[p.sessionId]?.accountId || '')).map(p => { const account = this.state.sessions[p.sessionId]?.accountId; return { id: p.id, nickname: p.nickname, avatar: account ? p.avatar : 'moss' as const, avatarDesign: account ? p.avatarDesign : null, here: this.isOnline(p), member: false, admin: false }; })
+        ] })),
       invitations: Object.values(this.state.roomRequests).filter(i => i.target === account.id && i.expiresAt > this.clock()).flatMap(i => { const room = this.state.rooms[i.roomId], inviter = this.state.accounts[i.inviter]; return room && inviter && !this.blocked(account.id, inviter.id) ? [{ id: i.id, roomName: room.name, inviter: inviter.nickname, expiresAt: i.expiresAt }] : []; }),
     };
   }

@@ -29,7 +29,7 @@ export type RoomView = {
   ticTacToe?: TicTacToeView;
 };
 export type RoomDirectoryView = {
-  rooms: { id: string; name: string; owner: boolean; memberCount: number; activeCount: number; current: boolean }[];
+  rooms: { id: string; name: string; owner: boolean; memberCount: number; activeCount: number; current: boolean; theme?: 'sage' | 'sunset' | 'midnight'; people?: { id: string; nickname: string; avatar: AvatarId; avatarDesign: AvatarDesign | null; here: boolean; member: boolean; admin: boolean }[] }[];
   invitations: { id: string; roomName: string; inviter: string; expiresAt: number }[];
 };
 export type AccountView = { id: string; username: string | null; nickname: string; avatar: AvatarId; provider: 'password' | 'google'; avatarDesign?: AvatarDesign | null };

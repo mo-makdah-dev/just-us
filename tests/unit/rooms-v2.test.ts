@@ -232,3 +232,18 @@ it('prepares both codes on saved-room creation and rotates them without changing
   await t.command(owner.sessionId, 'regenerateInvite');
   expect(t.rooms.view(outsider.sessionId).room!.id).toBe(created.id);
 });
+
+it('projects lounge members, visitors and presence without admission secrets or session data', async () => {
+  const t=await setup(), owner=await t.account(), visitor=await t.guest(), stranger=await t.account();
+  const created=(await t.create(owner.sessionId)).room!;
+  await t.join(visitor.sessionId,created.code,true);
+  const directory=t.rooms.directory(owner.sessionId);
+  expect(directory.rooms[0].people).toHaveLength(2);
+  expect(directory.rooms[0].people!.find(p=>p.admin)).toMatchObject({nickname:'Member',member:true,here:true});
+  expect(directory.rooms[0].people!.find(p=>!p.member)).toMatchObject({nickname:'Visitor',avatar:'moss',avatarDesign:null,here:true});
+  expect(directory.rooms[0].activeCount).toBe(2);
+  expect(t.rooms.directory(stranger.sessionId).rooms).toHaveLength(0);
+  const text=JSON.stringify(directory);
+  for(const secret of [created.code,created.memberCode,owner.sessionId,visitor.sessionId]) expect(text).not.toContain(secret);
+  expect(text).not.toContain('csrf');expect(text).not.toContain('passwordHash');
+});
