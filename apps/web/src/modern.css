@@ -40,3 +40,12 @@ html{scroll-padding-top:100px}body{margin:0;background:var(--canvas);color:var(-
 @media(max-width:700px){#root .visual-lounges{grid-template-columns:1fr}}
 #root ::selection{background:#e1d3eb;color:#43374c}
 .route-guard-page{max-width:720px;padding:50px 24px;margin:30px auto}.route-guard-page h1{font-size:38px;margin:14px 0}.route-guard-page p{margin-bottom:24px}
+
+/* The television belongs to the living room; watching is a personal choice. */
+#root .living-room-tv { display:flex; align-items:center; gap:16px; width:100%; text-align:left; padding:16px 20px; border:1px solid #ded4e9; border-radius:18px; background:#f6effb; color:#514361; margin-top:16px; }
+#root .living-room-tv:disabled { opacity:1; background:#f5f2ed; color:#766f7b; }
+#root .tv-screen { display:grid; place-items:center; flex:0 0 78px; height:52px; border:5px solid #9c8ab1; border-radius:10px; background:#e8dcf3; font-size:27px; }
+#root .tv-off .tv-screen { background:#e5e1e7; border-color:#aaa2b0; }
+#root .living-room-tv b, #root .living-room-tv small { display:block; }
+#root .living-room-tv small { margin-top:5px; line-height:1.5; }
+#root .living-room-return { margin-bottom:16px; }

@@ -61,11 +61,22 @@ function finish(g: TicTacToeState, m: Match, ctx: Context, status: Match['status
     else { f.status = status === 'void' ? 'void' : 'done'; f.winner = winner; f.draw = status === 'draw'; progress(g); }
   }
 }
+export function stopTicTacToe(g: TicTacToeState) {
+  g.open = false; g.match = null; g.competition = null; g.hands = []; g.recent = [];
+}
 export function reconcileTicTacToe(g: TicTacToeState, ctx: Context) {
   g.hands = g.hands.filter(id => ctx.players.some(p => p.id === id));
-  const m = g.match; if (!m || m.status !== 'playing') return;
-  const x = ctx.players.some(p => p.id === m.x.id), o = ctx.players.some(p => p.id === m.o.id);
-  if (!x || !o) finish(g, m, ctx, x || o ? 'forfeit' : 'void', x ? m.x.id : o ? m.o.id : null);
+  const m = g.match;
+  if (m?.status === 'playing') {
+    const x = ctx.players.some(p => p.id === m.x.id), o = ctx.players.some(p => p.id === m.o.id);
+    if (!x || !o) finish(g, m, ctx, x || o ? 'forfeit' : 'void', x ? m.x.id : o ? m.o.id : null);
+  }
+  // Explicit departures end abandoned sessions; network interruptions retain
+  // the room's existing reconnect grace. Spectators do not count as players.
+  const participants = g.competition?.status === 'running' ? g.competition.entrants.map(e => e.id) : m ? [m.x.id, m.o.id] : ctx.players.map(p => p.id);
+  if (g.open && !participants.some(id => ctx.players.some(p => p.id === id))) {
+    stopTicTacToe(g);
+  }
 }
 export function actTicTacToe(g: TicTacToeState, action: NonNullable<RoomCommand['game']>, ctx: Context) {
   const m = g.match;
@@ -87,7 +98,7 @@ export function actTicTacToe(g: TicTacToeState, action: NonNullable<RoomCommand[
     return;
   }
   requireRule(ctx.owner, 'OWNER_ONLY', 'Only the room owner can choose matches and manage a tournament.');
-  if (action.action === 'open') { g.open = true; return; }
+  if (action.action === 'open') { if (!g.open) { g.match = null; g.competition = null; g.hands = []; } g.open = true; return; }
   if (action.action === 'cancel') { if (g.competition?.status === 'running') g.competition.status = 'cancelled'; if (m?.status === 'playing') finish(g, m, ctx, 'void', null); return; }
   if (action.action === 'lobby') { requireRule(m?.status !== 'playing', 'GAME_ACTIVE', 'Finish or cancel the current match first.'); g.open = false; return; }
   requireRule(m?.status !== 'playing', 'GAME_ACTIVE', 'Finish the current match first.');

@@ -218,13 +218,23 @@ export async function createApplication(storage: Storage, settings: Settings) {
       socket.emit('sessionError', errorBody(error).error.message);
       socket.disconnect(true);
     });
+    socket.on('watchGame', async (input: unknown, ack: unknown) => {
+      if (typeof ack !== 'function') return;
+      try {
+        if (!socket.data.joined) throw new AppError('NOT_READY', 'Wait for the room to connect.');
+        limit(`watch:${sessionId}`, 30, 1000);
+        const data = z.object({roomId:z.string().length(32), watching:z.boolean()}).strict().parse(input);
+        await rooms.watchGame(sessionId, socket.id, data.roomId, data.watching);
+        ack({ok:true});
+      } catch(e) { ack(errorBody(e)); }
+    });
     socket.on('command', async (input: unknown, ack: unknown) => {
       if (typeof ack !== 'function') return;
       try {
         if (!socket.data.joined) throw new AppError('NOT_READY', 'Wait for the room to connect.');
         limit(`action:${sessionId}`, 20, 1000);
         if ((input as { type?: string })?.type === 'chat') limit(`chat:${sessionId}`, 5, 10000);
-        const data = await rooms.command(sessionId, input);
+        const data = await rooms.command(sessionId, input, socket.id);
         ack({ ok: true, data });
       } catch (e) { ack(errorBody(e)); }
     });

@@ -10,6 +10,20 @@ function setup(count = 4) {
   return { state, ctx, recorded, act, move };
 }
 describe('authoritative tic-tac-toe rules', () => {
+  it('turns off an abandoned session despite spectators and preserves results', () => {
+    const {state,ctx,act,recorded}=setup();
+    act({action:'start',players:['a','b']});
+    ctx.players=ctx.players.filter(p=>p.id!=='a'); reconcileTicTacToe(state,ctx);
+    expect(state.open).toBe(true); expect(state.match?.status).toBe('forfeit');
+    ctx.players=ctx.players.filter(p=>p.id!=='b'); reconcileTicTacToe(state,ctx);
+    expect(state.open).toBe(false); expect(state.recent).toHaveLength(0); expect(state.match).toBeNull(); expect(recorded).toHaveLength(2);
+    act({action:'open'}); expect(state.match).toBeNull(); expect(state.scores).toHaveLength(2);
+  });
+  it('cancels an abandoned tournament while keeping spectators in the living room', () => {
+    const {state,ctx,act}=setup(); act({action:'start',mode:'league',players:['a','b']});
+    ctx.players=ctx.players.filter(p=>!['a','b'].includes(p.id)); reconcileTicTacToe(state,ctx);
+    expect(state.open).toBe(false); expect(state.competition).toBeNull();
+  });
   for (const line of winningLines) it(`recognises winning line ${line.join(',')}`, () => {
     const { state, act, move } = setup(); act({ action: 'start', players: ['a', 'b'] });
     const other = [0, 1, 2, 3, 4, 5, 6, 7, 8].filter(i => !line.includes(i));

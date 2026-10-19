@@ -23,7 +23,7 @@ async function setup(accounts = false) {
   const ids = () => rooms.view(a.sessionId).room!.players;
   return { rooms, storage, a, b, spectator, game, send, ids, advance: (ms: number) => { now += ms; }, now: () => now };
 }
-it('keeps spectators read-only, enforces turns, scores exactly once and restores a finished board', async () => {
+it('keeps spectators read-only, enforces turns, scores exactly once and restarts with the TV off', async () => {
   const { rooms, storage, a, b, spectator, game, ids, now } = await setup(true);
   const players = ids().filter(p => p.nickname !== 'Casey').map(p => p.id);
   await expect(game(spectator.sessionId, { action: 'start', players })).rejects.toMatchObject({ code: 'OWNER_ONLY' });
@@ -41,9 +41,13 @@ it('keeps spectators read-only, enforces turns, scores exactly once and restores
   expect(view.match!.status).toBe('won'); expect(view.scores.map(s => s.played)).toEqual([1, 1]);
   expect(JSON.stringify(view)).not.toContain('account:'); expect(JSON.stringify(view)).not.toContain(a.sessionId);
   const winnerSession = sessionFor(match.x.id); expect(rooms.view(winnerSession).gameScores?.wins).toBe(1);
+  await rooms.watchGame(a.sessionId, 'a', before.id, true);
+  await rooms.watchGame(a.sessionId, 'a', before.id, false);
+  expect(rooms.view(a.sessionId).room!.ticTacToe!.scores.map(s => s.played)).toEqual([1, 1]);
+  expect(rooms.view(a.sessionId).room!.ticTacToe!.recent).toEqual([]);
   const restored = new Rooms(storage, now); await restored.init();
   expect(restored.view(winnerSession).gameScores?.wins).toBe(1);
-  expect(restored.view(a.sessionId).room!.ticTacToe?.match?.board).toEqual(view.match!.board);
+  expect(restored.view(a.sessionId).room!.ticTacToe?.match).toBeNull(); expect(restored.view(a.sessionId).room!.ticTacToe?.open).toBe(false);
 });
 it('pauses during reconnect grace, then forfeits once; leaving resolves immediately', async () => {
   const { rooms, a, b, game, send, ids, advance } = await setup();
@@ -102,3 +106,27 @@ it('does not reject a valid move because a spectator raised a hand, but rejects 
   const o = x === a ? b : a;
   await expect(game(o.sessionId, { action: 'move', cell: 1, matchId: match.id, ply: 0 })).rejects.toMatchObject({ code: 'STALE_MOVE' });
 });
+
+it('ends a game when its last TV viewer exits, even with everyone still in the room', async () => {
+  const {rooms,a,b,spectator,game,ids}=await setup();
+  const roomId=rooms.view(a.sessionId).room!.id;
+  await game(a.sessionId,{action:'start',players:ids().filter(p=>p.nickname!=='Casey').map(p=>p.id)});
+  await rooms.watchGame(a.sessionId,'a',roomId,true);
+  await rooms.watchGame(b.sessionId,'b',roomId,true);
+  await rooms.watchGame(a.sessionId,'a',roomId,false);
+  expect(rooms.view(spectator.sessionId).room!.ticTacToe!.open).toBe(true);
+  await rooms.watchGame(b.sessionId,'b',roomId,false);
+  const room=rooms.view(spectator.sessionId).room!;
+  expect(room.players).toHaveLength(3); expect(room.ticTacToe!.open).toBe(false);
+  expect(room.ticTacToe!.match).toBeNull(); expect(room.ticTacToe!.competition).toBeNull();
+  expect(room.ticTacToe!.recent).toEqual([]); expect(room.ticTacToe!.scores).toEqual([]);
+});
+it('counts TV viewers per tab and clears the board on the last viewer disconnect', async () => {
+  const {rooms,a,game,ids}=await setup(); const roomId=rooms.view(a.sessionId).room!.id;
+  await game(a.sessionId,{action:'start',players:ids().slice(0,2).map(p=>p.id)});
+  await rooms.connect(a.sessionId,'second');
+  await rooms.watchGame(a.sessionId,'a',roomId,true); await rooms.watchGame(a.sessionId,'second',roomId,true);
+  await rooms.disconnect(a.sessionId,'a'); expect(rooms.view(a.sessionId).room!.ticTacToe!.open).toBe(true);
+  await rooms.disconnect(a.sessionId,'second'); expect(rooms.view(a.sessionId).room!.ticTacToe!.match).toBeNull();
+});
+

@@ -2,7 +2,7 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import { AVATARS, PIXEL_COLORS, type RoomDirectoryView, type PeopleView, type CommandResult, type RoomCommand, type RoomView, type SessionView } from '../../../packages/protocol/src/index.js';
 import type { Storage } from './storage.js';
-import { actTicTacToe, anonymizeTicTacToe, emptyTicTacToe, emptyTotals, GameRuleError, projectTicTacToe, reconcileTicTacToe, ticTacToeSchema, totalsSchema } from './games/tic-tac-toe.js';
+import { actTicTacToe, anonymizeTicTacToe, emptyTicTacToe, emptyTotals, GameRuleError, projectTicTacToe, reconcileTicTacToe, stopTicTacToe, ticTacToeSchema, totalsSchema } from './games/tic-tac-toe.js';
 import { passwordHash, passwordMatches } from './passwords.js';
 
 const minute = 60_000;
@@ -42,6 +42,8 @@ export class Rooms {
   private state: State = { gameScores: {}, version: 4, sessions: {}, rooms: {}, receipts: {}, accounts: {}, connections: {}, invitations: {}, blocks: [], roomRequests: {} };
   private tail: Promise<unknown> = Promise.resolve();
   private online = new Map<string, Set<string>>();
+  private gameViewers = new Map<string, { roomId: string; sessionId: string }>();
+  private watchedRooms = new Set<string>();
   private connecting = new Set<string>();
   onChange: () => void = () => {};
   constructor(private storage: Storage, private clock = () => Date.now(), private googleEnabled = false) {}
@@ -64,6 +66,7 @@ export class Rooms {
       }
     }
     for (const room of Object.values(this.state.rooms)) { room.lastPresenceAt ||= this.clock(); room.emptySince ??= room.lastPresenceAt; for (const p of room.players) p.disconnectedAt ??= room.lastPresenceAt; }
+    for (const room of Object.values(this.state.rooms)) if (room.ticTacToe) stopTicTacToe(room.ticTacToe);
     await this.storage.save(this.state);
     await this.transact(() => {});
   }
@@ -72,6 +75,7 @@ export class Rooms {
     const task = this.tail.then(async () => {
       await this.storage.assertOwnership?.();
       const previous = structuredClone(this.state);
+      const previousViewers = new Map(this.gameViewers), previousWatched = new Set(this.watchedRooms);
       try {
         this.cleanup();
         const result = operation();
@@ -79,7 +83,7 @@ export class Rooms {
         if (JSON.stringify(previous) !== JSON.stringify(this.state)) await this.storage.save(this.state);
         this.onChange();
         return result;
-      } catch (error) { this.state = previous; throw error; }
+      } catch (error) { this.state = previous; this.gameViewers = previousViewers; this.watchedRooms = previousWatched; throw error; }
     });
     this.tail = task.catch(() => {});
     return task;
@@ -97,7 +101,10 @@ export class Rooms {
   }
   private reconcileGames() {
     for (const room of Object.values(this.state.rooms)) if (room.ticTacToe) {
-      const before = JSON.stringify(room.ticTacToe); reconcileTicTacToe(room.ticTacToe, this.gameContext(room));
+      const before = JSON.stringify(room.ticTacToe);
+      for (const [socketId, viewer] of this.gameViewers) if (!this.online.get(viewer.sessionId)?.has(socketId) || this.state.sessions[viewer.sessionId]?.roomId !== viewer.roomId) this.gameViewers.delete(socketId);
+      if (this.watchedRooms.has(room.id) && ![...this.gameViewers.values()].some(v => v.roomId === room.id)) stopTicTacToe(room.ticTacToe);
+      reconcileTicTacToe(room.ticTacToe, this.gameContext(room));
       if (before !== JSON.stringify(room.ticTacToe)) room.revision++;
     }
   }
@@ -108,6 +115,8 @@ export class Rooms {
     return Math.min(room.createdAt + policy.absolute, offline ? (room.emptySince ?? this.clock()) + policy.absent : Infinity);
   }
   private removeRoom(room: Room) {
+    this.watchedRooms.delete(room.id);
+    for (const [socketId, viewer] of this.gameViewers) if (viewer.roomId === room.id) this.gameViewers.delete(socketId);
     for (const p of room.players) { const session = this.state.sessions[p.sessionId]; if (session?.roomId === room.id) session.roomId = null; }
     delete this.state.rooms[room.id];
     for (const receipt of Object.values(this.state.receipts)) if ((receipt.result as { room?: { id?: string } } | null)?.room?.id === room.id) receipt.result = { room: null };
@@ -654,7 +663,7 @@ export class Rooms {
     }));
   }
 
-  async command(sessionId: string, raw: unknown): Promise<CommandResult> {
+  async command(sessionId: string, raw: unknown, connectionId?: string): Promise<CommandResult> {
     const input: RoomCommand = commandSchema.parse(raw);
     return this.transact(() => this.once(sessionId, input.commandId, input, () => {
       const room = this.state.rooms[input.roomId];
@@ -669,7 +678,11 @@ export class Rooms {
         if (input.type === 'ticTacToe') {
           if (!input.game) throw new AppError('INVALID_INPUT', 'Choose a game action.');
           const game = room.ticTacToe ||= emptyTicTacToe();
-          try { actTicTacToe(game, input.game, this.gameContext(room, sessionId)); }
+          try { actTicTacToe(game, input.game, this.gameContext(room, sessionId));
+            if (connectionId && ['open', 'start', 'rematch', 'next'].includes(input.game.action)) {
+              this.gameViewers.set(connectionId, {roomId: room.id, sessionId}); this.watchedRooms.add(room.id);
+            }
+          }
           catch (error) { if (error instanceof GameRuleError) throw new AppError(error.code, error.message); throw error; }
         }
         if (input.type === 'chat') {
@@ -721,6 +734,16 @@ export class Rooms {
     }));
   }
 
+  async watchGame(sessionId: string, connectionId: string, roomId: string, watching: boolean) {
+    await this.transact(() => {
+      const room = this.state.rooms[roomId];
+      if (!this.validSession(sessionId) || !this.online.get(sessionId)?.has(connectionId) || !room?.players.some(p => p.sessionId === sessionId)) throw new AppError('NOT_MEMBER', 'Enter this room first.', 403);
+      if (watching && !room.ticTacToe?.open) throw new AppError('GAME_ENDED', 'The TV is off. Choose a new game.');
+      if (watching) { this.gameViewers.set(connectionId, {roomId, sessionId}); this.watchedRooms.add(roomId); }
+      else if (this.gameViewers.get(connectionId)?.roomId === roomId) this.gameViewers.delete(connectionId);
+    });
+  }
+
   async connect(sessionId: string, connectionId: string) {
     if (!this.validSession(sessionId)) throw new AppError('SESSION_EXPIRED', 'Refresh to reconnect.', 401);
     // Cleanup happens before marking this participant online, so missed grace periods are respected.
@@ -740,7 +763,8 @@ export class Rooms {
   async disconnect(sessionId: string, connectionId: string) {
     const set = this.online.get(sessionId);
     if (!set?.delete(connectionId)) return;
-    if (set.size > 0) return;
+    this.gameViewers.delete(connectionId);
+    if (set.size > 0) { await this.transact(() => {}); return; }
     this.online.delete(sessionId);
     await this.transact(() => {
       if (this.online.get(sessionId)?.size) return;
