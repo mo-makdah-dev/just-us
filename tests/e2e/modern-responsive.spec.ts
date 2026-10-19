@@ -2,7 +2,7 @@ import { test, expect, type Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 const sizes = [{width:1440,height:1000},{width:1024,height:900},{width:820,height:1180},{width:390,height:844},{width:360,height:800}];
 async function capture(page:Page, name:string, widths=sizes) {
-  for(const viewport of widths) { await page.setViewportSize(viewport); await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth <= innerWidth)).toBe(true); await page.screenshot({path:`docs/redesign-preview/${name}-${viewport.width}.png`,fullPage:true}); }
+  for(const viewport of widths) { await page.setViewportSize(viewport); await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth <= innerWidth)).toBe(true); await page.screenshot({path:`test-results/redesign-preview/${name}-${viewport.width}.png`,fullPage:true}); }
 }
 test('cozy modern surfaces adapt to laptop, tablet and mobile with accessible controls', async ({page,browser})=>{
   test.setTimeout(180000);
@@ -22,7 +22,7 @@ test('cozy modern surfaces adapt to laptop, tablet and mobile with accessible co
     await capture(page,'room');await page.setViewportSize(sizes[0]);await audit('room');
     await page.getByRole('button',{name:'Open game library',exact:true}).click();await capture(page,'games',[sizes[0],sizes[2],sizes[3]]);await page.setViewportSize(sizes[0]);await audit('games');
     const disabled=page.getByRole('button',{name:'Play Bingo — coming soon',exact:true});await expect(disabled).toBeDisabled();expect(await disabled.evaluate(el=>getComputedStyle(el).cursor)).toBe('default');
-    await page.getByRole('button',{name:'Play Tic-tac-toe',exact:true}).click();await page.getByRole('checkbox',{name:/Alex/}).check();await page.getByRole('checkbox',{name:/Jamie/}).check();await page.getByRole('button',{name:'Start selected match',exact:true}).click();await expect(page.getByRole('group',{name:'Tic-tac-toe board',exact:true})).toBeVisible();await capture(page,'playing',[sizes[0],sizes[2],sizes[3]]);
+    await page.getByRole('button',{name:'Play Tic-tac-toe',exact:true}).click();await capture(page,'character-select',[sizes[0],sizes[2],sizes[3],sizes[4]]);await page.setViewportSize(sizes[0]);await audit('character-select');await page.getByRole('checkbox',{name:/Alex/}).check();await page.getByRole('checkbox',{name:/Jamie/}).check();await page.getByRole('button',{name:'Start selected match',exact:true}).click();await expect(page.getByRole('group',{name:'Tic-tac-toe board',exact:true})).toBeVisible();await capture(page,'playing',[sizes[0],sizes[2],sizes[3]]);
     await expect(guest.getByRole('button',{name:'Watch Tic-tac-toe',exact:true})).toBeVisible();
     await expect(guest.getByRole('group',{name:'Tic-tac-toe board',exact:true})).toHaveCount(0);
     await guest.getByRole('button',{name:'Watch Tic-tac-toe',exact:true}).click();
