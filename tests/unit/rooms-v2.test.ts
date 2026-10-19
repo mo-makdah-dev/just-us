@@ -247,3 +247,16 @@ it('projects lounge members, visitors and presence without admission secrets or 
   for(const secret of [created.code,created.memberCode,owner.sessionId,visitor.sessionId]) expect(text).not.toContain(secret);
   expect(text).not.toContain('csrf');expect(text).not.toContain('passwordHash');
 });
+
+it('enforces account, room-member and admin permissions on server actions regardless of URL', async () => {
+  const t=await setup(), owner=await t.account(), outsider=await t.account(), guest=await t.guest();
+  const room=(await t.create(owner.sessionId)).room!;
+  expect(()=>t.rooms.directory(guest.sessionId)).toThrow();
+  await expect(t.saved(guest.sessionId,'enter',room.id)).rejects.toMatchObject({code:'SIGN_IN_REQUIRED'});
+  await expect(t.saved(outsider.sessionId,'enter',room.id)).rejects.toMatchObject({code:'NOT_MEMBER'});
+  await t.join(outsider.sessionId,room.memberCode);
+  await expect(t.command(outsider.sessionId,'rename',{name:'Unauthorized rename'})).rejects.toMatchObject({code:'OWNER_ONLY'});
+  await expect(t.command(outsider.sessionId,'memberInvite')).rejects.toMatchObject({code:'OWNER_ONLY'});
+  await expect(t.saved(outsider.sessionId,'delete',room.id)).rejects.toMatchObject({code:'OWNER_ONLY'});
+  expect(t.rooms.view(owner.sessionId).room!.name).toBe(room.name);
+});

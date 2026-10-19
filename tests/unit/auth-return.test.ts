@@ -17,3 +17,13 @@ it('does not break Google sign-in when optional session storage is blocked', () 
   const store = { getItem() { throw new Error('blocked'); }, setItem() { throw new Error('blocked'); }, removeItem() { throw new Error('blocked'); } };
   expect(() => saveAuthReturn(store, { page: 'home', mode: null })).not.toThrow(); expect(takeAuthReturn(store)).toBeNull();
 });
+
+it('restores only known safe protected destinations after OAuth', () => {
+  const store=storage();
+  saveAuthReturn(store,{page:'account',mode:null,returnPath:'/account?section=people'},1000);
+  expect(takeAuthReturn(store,1001)).toEqual({page:'account',mode:null,returnPath:'/account?section=people'});
+  saveAuthReturn(store,{page:'home',mode:null,returnPath:'https://evil.example'},1000);
+  expect(takeAuthReturn(store,1001)).toEqual({page:'home',mode:null});
+  saveAuthReturn(store,{page:'home',mode:null,returnPath:'/sign-in'},1000);
+  expect(takeAuthReturn(store,1001)).toEqual({page:'home',mode:null});
+});

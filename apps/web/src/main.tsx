@@ -8,6 +8,7 @@ import './room.css';
 import './tic-tac-toe.css';
 import './modern.css';
 import { AppNavigation, NavIcon } from './AppNavigation.js';
+import { guardRoute, resolveRoute, safeReturnPath } from './routes.js';
 import { TicTacToe } from './TicTacToe.js';
 import { AccessCards, AccountPage, AuthDialog, type AuthMode } from './Account.js';
 import { RecoveryDialog } from './Security.js';
@@ -54,7 +55,8 @@ function RoomIllustration() {
 function App() {
   const [session, setSession] = useState<SessionView | null>(null);
   const [route, setRoute] = useState(location.pathname + location.search);
-  const requestedRoomId = /^\/room\/([a-f0-9]{32})$/.exec(route.split('?')[0])?.[1];
+  const resolvedRoute = resolveRoute(route);
+  const requestedRoomId = resolvedRoute.kind === 'authorized' ? resolvedRoute.roomId : undefined;
   const [roomLinkError, setRoomLinkError] = useState('');
   const [helpOpen, setHelpOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -86,6 +88,12 @@ function App() {
   const backdropPress = useRef(false);
   const modalActive = mode !== null || confirm !== null;
   const room = session?.room ?? null;
+  const guard = guardRoute(route, session, loading);
+  useEffect(() => {
+    if (guard.kind === 'redirect') { writeRoute(guard.to, true); return; }
+    if (resolvedRoute.kind === 'guest' && guard.kind === 'allow') setAuthMode(resolvedRoute.authMode);
+    else if (resolvedRoute.kind !== 'guest') setAuthMode(null);
+  }, [route, loading, session?.account?.id, session?.room?.id, session?.csrf]);
   useEffect(() => { setLibraryOpen(false); setRoomTab('room'); }, [room?.id]);
   useEffect(() => {
     const latest = room?.messages.at(-1);
@@ -107,9 +115,15 @@ function App() {
     }
     setSession(data); return data;
   }
+  function writeRoute(href: string, replace = false) {
+    if (replace) history.replaceState(null, '', href); else history.pushState(null, '', href);
+    const current = location.pathname + location.search;
+    setRoute(current); setPage(location.pathname === '/account' ? 'account' : ['/rooms', '/dashboard'].includes(location.pathname) ? 'rooms' : 'home');
+    window.dispatchEvent(new PopStateEvent('popstate')); window.scrollTo({ top: 0 });
+  }
   function navigate(value: 'home' | 'account' | 'rooms') {
-    setPage(value); setMode(null); setConfirm(null); setError('');
-    history.pushState(null, '', value === 'account' ? '/account' : value === 'rooms' ? '/dashboard' : '/'); setRoute(location.pathname + location.search); window.dispatchEvent(new PopStateEvent('popstate')); window.scrollTo({ top: 0 });
+    setMode(null); setConfirm(null); setError('');
+    writeRoute(value === 'account' ? '/account' : value === 'rooms' ? '/dashboard' : '/');
   }
   function enterRoom(data: CommandResult) {
     result(data); setPage('home'); setMode(null); setError('');
@@ -121,12 +135,30 @@ function App() {
     let active = true; setRoomLinkError('');
     void api<CommandResult>('/api/saved-rooms', session.csrf, { type: 'enter', roomId: requestedRoomId, commandId: crypto.randomUUID() }).then(data => { if (active) result(data); }).catch(() => { if (active) setRoomLinkError('You need a membership or an invitation code to enter this room.'); });
     return () => { active = false; };
-  }, [requestedRoomId, session?.account?.id, session?.csrf]);
-  function openAuth(value: AuthMode = 'signup') { resumeMode.current = mode; setMode(null); setConfirm(null); setError(''); setAuthMode(value); }
+  }, [requestedRoomId, session?.account?.id, session?.csrf, session?.room?.id]);
+  function openAuth(value: AuthMode = 'signup') {
+    resumeMode.current = mode; setMode(null); setConfirm(null); setError('');
+    const next = safeReturnPath(route) || safeReturnPath(new URL(location.href).searchParams.get('next'));
+    writeRoute((value === 'login' ? '/sign-in' : '/sign-up') + (next ? '?next=' + encodeURIComponent(next) : ''));
+    setAuthMode(value);
+  }
+  function changeAuthMode(value: AuthMode | null) {
+    setAuthMode(value);
+    const current = resolveRoute(location.pathname + location.search);
+    if (current.kind !== 'guest') return;
+    if (!value) {
+      if (!session?.account) writeRoute(session?.room ? '/room/' + session.room.id : '/', true);
+    } else if (value !== 'recover') {
+      const next = safeReturnPath(new URL(location.href).searchParams.get('next'));
+      writeRoute((value === 'login' ? '/sign-in' : '/sign-up') + (next ? '?next=' + encodeURIComponent(next) : ''), true);
+    }
+  }
   function signedSession(data: SessionView) {
     if (data.recoveryCode) { data = { ...data, recoveryCode: undefined }; }
     if (data.csrf !== session?.csrf) socket.current?.disconnect();
     setSession(data); setError('');
+    if (data.account && !session?.account && resolveRoute(location.pathname + location.search).kind === 'guest') { writeRoute(safeReturnPath(new URL(location.href).searchParams.get('next')) || '/dashboard', true); }
+    else if (!data.account && session?.account) writeRoute(data.room ? '/room/' + data.room.id : '/', true);
     if (resumeMode.current && !data.room) { setMode(resumeMode.current); resumeMode.current = null; }
     if (data.account && !session?.account) setNotice('Your free account is ready. Make yourself at home.');
     else if (!data.account && session?.account) setNotice('You’re now a guest. Your current room is still here.');
@@ -139,16 +171,17 @@ function App() {
     const consumeLink = () => {
       const match = window.location.hash.match(/^#invite=([a-f0-9]{32}|[A-Z2-9]{10})$/);
       if (match) { setInvite(match[1]); setMode('join'); window.history.replaceState(null, '', window.location.pathname); }
+      setRoute(location.pathname + location.search);
       const peopleMatch = location.hash.match(/^#connect=([a-f0-9]{48})$/);
-      if (peopleMatch) { setPeopleToken(peopleMatch[1]); setPage('account'); history.replaceState(null, '', '/account'); }
+      if (peopleMatch) { setPeopleToken(peopleMatch[1]); setPage('account'); history.replaceState(null, '', '/account?section=people'); setRoute('/account?section=people'); }
     };
     consumeLink();
     window.addEventListener('hashchange', consumeLink);
     const status = new URLSearchParams(location.search).get('auth');
     if (status) {
       let destination = location.pathname;
-      try { const intent = takeAuthReturn(sessionStorage); if (intent) { setPage(intent.page); setMode(intent.mode); if (intent.invitation) setInvite(intent.invitation); if (intent.peopleToken) setPeopleToken(intent.peopleToken); destination = intent.page === 'home' ? '/' : `/${intent.page}`; } } catch {}
-      history.replaceState(null, '', destination);
+      try { const intent = takeAuthReturn(sessionStorage); if (intent) { setPage(intent.page); setMode(intent.mode); if (intent.invitation) setInvite(intent.invitation); if (intent.peopleToken) setPeopleToken(intent.peopleToken); destination = intent.returnPath || (intent.page === 'home' ? '/' : intent.page === 'rooms' ? '/dashboard' : '/account'); } } catch {}
+      history.replaceState(null, '', destination); setRoute(destination); setPage(destination.startsWith('/account') ? 'account' : destination.startsWith('/dashboard') ? 'rooms' : 'home');
       if (status === 'success') setNotice('You’re signed in. Welcome to your little space.');
       else setError(status === 'conflict' ? 'This account already has a room in another browser. Your guest room has been kept.' : status === 'cancelled' ? 'Sign-in was cancelled. Your guest room is still here.' : 'Sign-in could not be completed. Your guest room is still here; please try again.');
     }
@@ -199,7 +232,7 @@ function App() {
     if (!modalActive && dialog.current.open) dialog.current.close();
   }, [modalActive]);
   useEffect(() => { if (room) { setMode(null); } }, [room?.id]);
-  useEffect(() => { if (session?.room && location.pathname === '/') { history.replaceState(null, '', '/room/' + session.room.id); setRoute(location.pathname); } if (session?.account && (location.pathname === '/rooms' || (location.pathname === '/' && !session.room))) { history.replaceState(null, '', '/dashboard'); setPage('rooms'); } }, [session?.account?.id, session?.room?.id]);
+
 
   function begin(value: Mode) { setRoomName(''); setError(''); setMode(value); pending.current = null; }
   function remember() { cache.remove('just-us-nickname'); cache.remove('just-us-avatar'); }
@@ -269,7 +302,7 @@ function App() {
   return <>
     <a className="skip-link" href="#main">Skip to content</a><header className={`site-header ${session?.account ? 'is-member' : ''}`}><a className="wordmark" href={session?.account ? '/dashboard' : '/'} onClick={event => { if(event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); navigate(session?.account ? 'rooms' : 'home'); }} aria-label="Just Us home"><span className="brand-mark"><NavIcon name="spark"/></span>just us<span className="brand-period">.</span></a>{session?.account ? <AppNavigation account={session.account} current={page === 'rooms' || (page === 'home' && !room) ? '/dashboard' : route} onNavigate={href => { if (href === '/dashboard') navigate('rooms'); else openAccount(new URL(href, location.origin).searchParams.get('section') || 'profile'); }} onProfile={() => navigate('account')}/> : <nav className="header-account guest-nav" aria-label="Account"><button className="text-button header-signin" disabled={!session} onClick={() => openAuth('login')}>Sign in</button><button className="button primary header-join" disabled={!session} onClick={() => openAuth('signup')}>Join free <NavIcon name="arrow"/></button></nav>}</header>
     <main id="main" tabIndex={-1}>{connection === 'conflict' && <div className="connection-banner" role="status">Your session changed or this seat is open in another tab. Close the other tab if needed, then refresh.<button className="text-button" onClick={() => location.reload()}>Refresh session</button></div>}
-      {loading ? <section className="loading-state" role="status"><span className="loader" />Making a little room for you…</section> : page === 'rooms' && session?.account ? dashboard : page === 'rooms' ? <RoomsDirectory session={session} onAuth={() => openAuth('login')} onCreate={() => begin('create')} onJoin={() => begin('join')} onEntered={data => { enterRoom(data); }} /> : page === 'account' ? <AccountPage inviteToken={peopleToken} onConsumed={() => setPeopleToken(undefined)} onRecovery={setRecoveryCode} session={session} onSession={signedSession} onAuth={openAuth} onHome={() => navigate(session?.account ? 'rooms' : 'home')} onPending={value => { authPending.current = value; busyRef.current = value; }} /> : requestedRoomId && room?.id !== requestedRoomId ? <section className="room-link-gate"><p className="eyebrow">YOUR SEAT IS WAITING</p><h1>A room for your people.</h1><p>{roomLinkError || (session?.account ? 'Checking your room access…' : 'Sign in with a saved membership, or enter an invitation code.')}</p><div className="directory-actions">{!session?.account && <button className="button primary" onClick={() => openAuth('login')}>Sign in</button>}<button className="button secondary" onClick={() => begin('join')}>Join by code</button></div></section> : !room && session?.account ? dashboard : !room ? <>
+      {guard.kind === 'not-found' ? <section className="route-guard-page"><p className="eyebrow">404</p><h1>This page isn’t here.</h1><p>Check the address or return to your space.</p><a className="button primary" href={session?.account ? '/dashboard' : '/'}>Go home</a></section> : guard.kind === 'redirect' || guard.kind === 'pending' ? <section className="loading-state" role="status">Checking access…</section> : guard.kind === 'unavailable' ? <section className="route-guard-page"><h1>We couldn’t verify your session.</h1><p>Please try again before opening this page.</p><button className="button primary" onClick={() => location.reload()}>Try again</button></section> : resolvedRoute.kind === 'guest' ? <section className="route-guard-page"><p className="eyebrow">YOUR LITTLE SPACE</p><h1>{resolvedRoute.authMode === 'login' ? 'Sign in to continue.' : 'Make yourself at home.'}</h1><p>Your people and your rooms are waiting.</p><button className="button primary" onClick={() => setAuthMode(resolvedRoute.authMode)}>Continue</button></section> : loading ? <section className="loading-state" role="status"><span className="loader" />Making a little room for you…</section> : page === 'rooms' && session?.account ? dashboard : page === 'rooms' ? <RoomsDirectory session={session} onAuth={() => openAuth('login')} onCreate={() => begin('create')} onJoin={() => begin('join')} onEntered={data => { enterRoom(data); }} /> : page === 'account' ? <AccountPage inviteToken={peopleToken} onConsumed={() => setPeopleToken(undefined)} onRecovery={setRecoveryCode} session={session} onSession={signedSession} onAuth={openAuth} onHome={() => navigate(session?.account ? 'rooms' : 'home')} onPending={value => { authPending.current = value; busyRef.current = value; }} /> : requestedRoomId && room?.id !== requestedRoomId ? <section className="room-link-gate"><p className="eyebrow">YOUR SEAT IS WAITING</p><h1>A room for your people.</h1><p>{roomLinkError || (session?.account ? 'Checking your room access…' : 'Sign in with a saved membership, or enter an invitation code.')}</p><div className="directory-actions">{!session?.account && <button className="button primary" onClick={() => openAuth('login')}>Sign in</button>}<button className="button secondary" onClick={() => begin('join')}>Join by code</button></div></section> : !room && session?.account ? dashboard : !room ? <>
 
         <section className="hero">
           <div className="hero-copy"><p className="eyebrow"><span /> A LITTLE CLOSER, WHEREVER YOU ARE</p><h1>Different places.<br /><em>Same us.</em></h1><p className="hero-description">A private lounge for your favourite people.<br className="desktop-break" /> Hang out, play a game, and feel a little closer.</p>
@@ -304,7 +337,7 @@ function App() {
         </form>}
       </div>
     </dialog>
-    <AuthDialog onGoogleStart={() => { try { let code = invite.trim(); if (code.includes('#invite=')) code = new URL(code).hash.slice(8); saveAuthReturn(sessionStorage, { page, mode: resumeMode.current, invitation: code.replace(/[\s-]/g, '').toUpperCase().match(/^[A-Z2-9]{10}$/) ? code.replace(/[\s-]/g, '').toUpperCase() : code, peopleToken }); } catch {} }} mode={authMode} setMode={setAuthMode} session={session} initialNickname={nickname} initialAvatar={avatar} onSession={signedSession} onPending={value => { authPending.current = value; busyRef.current = value; }} />
+    <AuthDialog onGoogleStart={() => { try { let code = invite.trim(); if (code.includes('#invite=')) code = new URL(code).hash.slice(8); saveAuthReturn(sessionStorage, { page, returnPath: safeReturnPath(route) || safeReturnPath(new URL(location.href).searchParams.get('next')) || undefined, mode: resumeMode.current, invitation: code.replace(/[\s-]/g, '').toUpperCase().match(/^[A-Z2-9]{10}$/) ? code.replace(/[\s-]/g, '').toUpperCase() : code, peopleToken }); } catch {} }} mode={authMode} setMode={changeAuthMode} session={session} initialNickname={nickname} initialAvatar={avatar} onSession={signedSession} onPending={value => { authPending.current = value; busyRef.current = value; }} />
     <RecoveryDialog code={recoveryCode} onClose={() => setRecoveryCode(null)} />
   </>;
 }

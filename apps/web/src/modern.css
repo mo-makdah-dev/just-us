@@ -39,3 +39,4 @@ html{scroll-padding-top:100px}body{margin:0;background:var(--canvas);color:var(-
 @media(min-width:701px) and (max-width:1100px){#root .visual-lounges{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:700px){#root .visual-lounges{grid-template-columns:1fr}}
 #root ::selection{background:#e1d3eb;color:#43374c}
+.route-guard-page{max-width:720px;padding:50px 24px;margin:30px auto}.route-guard-page h1{font-size:38px;margin:14px 0}.route-guard-page p{margin-bottom:24px}
