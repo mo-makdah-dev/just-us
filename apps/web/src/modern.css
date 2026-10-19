@@ -163,3 +163,16 @@ html{scroll-padding-top:100px}body{margin:0;background:var(--canvas);color:var(-
 #root .waiting-portraits > div { display:flex; flex-direction:column; gap:8px; font-size:12px; }
 #root .waiting-portraits .avatar { width:76px; height:76px; border-radius:20px; box-shadow:0 6px 0 #d7c4e4; }
 @media(max-width:600px) { #root .character-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } #root .game-mode-cards label { padding:12px 5px; } }
+
+#root button.library-card { display:block; padding:14px; text-align:left; font:inherit; color:var(--ink); cursor:pointer; }
+#root button.library-card:enabled:hover { border-color:#a183b6; transform:translateY(-3px); box-shadow:0 10px 24px #73508b18; }
+#root button.library-card:disabled { cursor:default; opacity:1; filter:none; }
+#root button.library-card:focus-visible { outline:3px solid #795391; outline-offset:4px; }
+#root .game-card-heading strong { font-size:15px; font-weight:650; }
+#root .room-game-setting { display:flex; align-items:center; gap:14px; padding:14px 0 20px; }
+#root .room-game-setting > span { flex:1; }
+#root .room-game-setting strong { display:block; font-size:13px; }
+#root .room-game-setting small { display:block; font-size:11px; color:#74647e; line-height:1.6; margin-top:5px; }
+#root .room-game-setting input { width:36px; height:22px; accent-color:#795391; flex:0 0 auto; }
+#root .game-heading-actions { display:flex; align-items:center; gap:12px; }
+#root .game-sound-toggle { color:#705181; }

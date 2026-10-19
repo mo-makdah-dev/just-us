@@ -44,7 +44,7 @@ function finish(g: TicTacToeState, m: Match, ctx: Context, status: Match['status
   requireRule(m.status === 'playing', 'GAME_FINISHED', 'This match has already ended.');
   m.status = status; m.winner = winner; m.line = line; m.endedAt = ctx.now;
   if (status !== 'void') for (const e of [m.x, m.o]) {
-    if (e.key === null) continue; // An account deleted during a match must not regain a score identity.
+    if (!e.key?.startsWith('account:')) continue; // An account deleted during a match must not regain a score identity.
     const draw = status === 'draw', win = e.id === winner;
     const delta: GameTotals = { played: 1, wins: win ? 1 : 0, draws: draw ? 1 : 0, losses: !draw && !win ? 1 : 0, points: win ? 3 : draw ? 1 : 0, forfeits: status === 'forfeit' && !win ? 1 : 0 };
     let row = g.scores.find(s => e.key ? s.key === e.key : s.id === e.id);
@@ -140,8 +140,8 @@ export function actTicTacToe(g: TicTacToeState, action: NonNullable<RoomCommand[
   g.competition = { id: id(), mode, status: 'running', entrants, fixtures: mode === 'league' ? shuffle(fixtures) : pairRound(entrants.map(e => e.id), 1), round: 1, champions: [] };
 }
 export function projectTicTacToe(g: TicTacToeState, self: string, accountKey: string | null): TicTacToeView {
-  const entry = (e: Entry) => ({ id: e.id, name: e.name });
-  return { open: g.open, hands: [...g.hands], match: g.match ? { ...g.match, x: entry(g.match.x), o: entry(g.match.o) } : null, competition: g.competition ? { ...g.competition, entrants: g.competition.entrants.map(entry) } : null, scores: g.scores.map(({ key, ...row }) => ({ ...row, isYou: key === (accountKey || 'guest:' + self) })).sort((a, b) => b.points - a.points || b.wins - a.wins), recent: g.recent };
+  const entry = (e: Entry) => ({ id: e.id, name: e.name, signedIn: !!e.key?.startsWith('account:') });
+  return { open: g.open, hands: [...g.hands], match: g.match ? { ...g.match, x: entry(g.match.x), o: entry(g.match.o) } : null, competition: g.competition ? { ...g.competition, entrants: g.competition.entrants.map(entry) } : null, scores: g.scores.filter(row => row.key?.startsWith('account:')).map(({ key, ...row }) => ({ ...row, isYou: key === (accountKey || 'guest:' + self) })).sort((a, b) => b.points - a.points || b.wins - a.wins), recent: g.recent };
 }
 export function anonymizeTicTacToe(g: TicTacToeState, accountKey: string) {
   const rename = (e: Entry) => { if (e.key === accountKey) { e.key = null; e.name = 'Former player'; } };

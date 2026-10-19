@@ -5,7 +5,7 @@ export const PIXEL_COLORS = ['transparent', '#332e40', '#fff4dd', '#f2c7a6', '#d
 export type AvatarDesign = { version: 1; pixels: number[] };
 export type GameTotals = { played: number; wins: number; draws: number; losses: number; points: number; forfeits: number };
 export type TicTacToeMode = 'single' | 'knockout' | 'league';
-export type TicTacToeEntry = { id: string; name: string };
+export type TicTacToeEntry = { id: string; name: string; signedIn?: boolean };
 export type TicTacToeMatch = { id: string; x: TicTacToeEntry; o: TicTacToeEntry; board: ('X' | 'O' | null)[]; turn: 'X' | 'O'; status: 'playing' | 'won' | 'draw' | 'forfeit' | 'void'; winner: string | null; line: number[]; fixtureId: string | null; endedAt: number | null };
 export type TicTacToeFixture = { id: string; x: string; o: string | null; status: 'pending' | 'done' | 'void'; winner: string | null; draw: boolean; round: number; attempt: number };
 export type TicTacToeCompetition = { id: string; mode: 'knockout' | 'league'; status: 'running' | 'completed' | 'cancelled'; entrants: TicTacToeEntry[]; fixtures: TicTacToeFixture[]; round: number; champions: string[] };
@@ -18,7 +18,7 @@ export type PlayerView = {
 };
 export type RoomView = {
   id: string; revision: number; phase: 'waiting' | 'lobby';
-  code: string; isOwner: boolean; players: PlayerView[];
+  code: string; isOwner: boolean; allowPlayerGames?: boolean; players: PlayerView[];
   expiresAt: number | null; serverTime: number; admissionsOpen: boolean;
   canReopen: boolean; games: []; createdAt: number;
   theme?: 'sage' | 'sunset' | 'midnight';
@@ -49,9 +49,9 @@ export type SessionView = {
 };
 export type RoomCommand = {
   commandId: string; roomId: string; expectedRevision: number;
-  type: 'keepAlive' | 'leave' | 'close' | 'regenerateInvite' | 'reopen' | 'theme' | 'memberInvite' | 'remove' | 'rename' | 'chat' | 'saveRoom' | 'revokeCodes' | 'deleteMessage' | 'clearChat' | 'ticTacToe';
+  type: 'keepAlive' | 'leave' | 'close' | 'regenerateInvite' | 'reopen' | 'theme' | 'memberInvite' | 'remove' | 'rename' | 'chat' | 'saveRoom' | 'revokeCodes' | 'deleteMessage' | 'clearChat' | 'ticTacToe' | 'gameSettings';
   theme?: 'sage' | 'sunset' | 'midnight';
-  targetId?: string; name?: string; text?: string; messageId?: string;
+  allowPlayerGames?: boolean; targetId?: string; name?: string; text?: string; messageId?: string;
   game?: { action: 'open' | 'hand' | 'start' | 'move' | 'next' | 'rematch' | 'resign' | 'cancel' | 'lobby'; mode?: TicTacToeMode; players?: string[]; random?: boolean; matchId?: string; cell?: number; ply?: number; raised?: boolean; fixtureId?: string };
 };
 export type CommandResult = { room: RoomView | null; invitation?: string };

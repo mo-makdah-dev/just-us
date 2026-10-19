@@ -10,11 +10,11 @@ export const policy = { grace: 5 * minute, absent: 5 * minute, idle: 60 * minute
 const identity = z.object({ nickname: z.string().trim().min(1).max(24).refine(s => !/[\p{Cc}\p{Cf}]/u.test(s), 'Use a visible nickname.'), avatar: z.enum(AVATARS) });
 export const createSchema = identity.extend({ commandId: z.string().uuid(), name: z.string().trim().min(1).max(40).refine(s => !/[\p{Cc}\p{Cf}]/u.test(s), 'Use a visible room name.').optional() }).strict();
 export const joinSchema = createSchema.omit({ name: true }).extend({ invitation: z.string().trim().min(1).max(100), asVisitor: z.boolean().optional() }).strict();
-export const commandSchema = z.object({ commandId: z.string().uuid(), roomId: z.string().regex(/^[a-f0-9]{32}$/), expectedRevision: z.number().int().nonnegative(), type: z.enum(['keepAlive', 'leave', 'close', 'regenerateInvite', 'reopen', 'theme', 'memberInvite', 'remove', 'rename', 'chat', 'saveRoom', 'revokeCodes', 'deleteMessage', 'clearChat', 'ticTacToe']), game: z.object({ action: z.enum(['open', 'hand', 'start', 'move', 'next', 'rematch', 'resign', 'cancel', 'lobby']), mode: z.enum(['single', 'knockout', 'league']).optional(), players: z.array(z.string().regex(/^[a-f0-9]{32}$/)).min(2).max(4).optional(), random: z.boolean().optional(), matchId: z.string().regex(/^[a-f0-9]{32}$/).optional(), cell: z.number().int().min(0).max(8).optional(), ply: z.number().int().min(0).max(8).optional(), raised: z.boolean().optional(), fixtureId: z.string().regex(/^[a-f0-9]{32}$/).optional() }).strict().optional(), messageId: z.string().regex(/^[a-f0-9]{32}$/).optional(), theme: z.enum(['sage', 'sunset', 'midnight']).optional(), targetId: z.string().regex(/^[a-f0-9]{32}$/).optional(), name: z.string().trim().min(1).max(40).refine(s => !/[\p{Cc}\p{Cf}]/u.test(s)).optional(), text: z.string().trim().min(1).max(1000).refine(s => !/[\u0000-\u0008\u000b-\u001f\u007f]/u.test(s)).optional() }).strict();
+export const commandSchema = z.object({ commandId: z.string().uuid(), roomId: z.string().regex(/^[a-f0-9]{32}$/), expectedRevision: z.number().int().nonnegative(), type: z.enum(['keepAlive', 'leave', 'close', 'regenerateInvite', 'reopen', 'theme', 'memberInvite', 'remove', 'rename', 'chat', 'saveRoom', 'revokeCodes', 'deleteMessage', 'clearChat', 'ticTacToe', 'gameSettings']), allowPlayerGames: z.boolean().optional(), game: z.object({ action: z.enum(['open', 'hand', 'start', 'move', 'next', 'rematch', 'resign', 'cancel', 'lobby']), mode: z.enum(['single', 'knockout', 'league']).optional(), players: z.array(z.string().regex(/^[a-f0-9]{32}$/)).min(2).max(4).optional(), random: z.boolean().optional(), matchId: z.string().regex(/^[a-f0-9]{32}$/).optional(), cell: z.number().int().min(0).max(8).optional(), ply: z.number().int().min(0).max(8).optional(), raised: z.boolean().optional(), fixtureId: z.string().regex(/^[a-f0-9]{32}$/).optional() }).strict().optional(), messageId: z.string().regex(/^[a-f0-9]{32}$/).optional(), theme: z.enum(['sage', 'sunset', 'midnight']).optional(), targetId: z.string().regex(/^[a-f0-9]{32}$/).optional(), name: z.string().trim().min(1).max(40).refine(s => !/[\p{Cc}\p{Cf}]/u.test(s)).optional(), text: z.string().trim().min(1).max(1000).refine(s => !/[\u0000-\u0008\u000b-\u001f\u007f]/u.test(s)).optional() }).strict();
 const designSchema = z.object({ version: z.literal(1), pixels: z.array(z.number().int().min(0).max(PIXEL_COLORS.length - 1)).length(576) }).strict().nullable();
 
 const memberSchema = z.object({ id: z.string(), sessionId: z.string(), nickname: z.string(), avatar: z.enum(AVATARS), avatarDesign: designSchema.default(null), seat: z.number(), disconnectedAt: z.number().nullable(), joinedAt: z.number().default(0) });
-const roomSchema = z.object({ id: z.string(), ownerId: z.string(), invitationHash: z.string(), code: z.string(), players: z.array(memberSchema).max(4), revision: z.number(), createdAt: z.number(), lastActive: z.number(), admissionsOpen: z.boolean(), theme: z.enum(['sage', 'sunset', 'midnight']).default('sage'), ownerAccountId: z.string().nullable().default(null), name: z.string().default('Our little room'), members: z.array(z.string()).max(4).default([]), banned: z.array(z.string()).default([]), memberCode: z.string().default(''), memberUntil: z.number().default(0), visitorUntil: z.number().default(0), emptySince: z.number().nullable().default(null), lastPresenceAt: z.number().default(0), messages: z.array(z.object({ id: z.string(), accountId: z.string().nullable(), nickname: z.string(), text: z.string().max(1000), createdAt: z.number() })).max(200).default([]), ticTacToe: ticTacToeSchema.nullable().default(null) });
+const roomSchema = z.object({ id: z.string(), ownerId: z.string(), invitationHash: z.string(), code: z.string(), players: z.array(memberSchema).max(4), revision: z.number(), createdAt: z.number(), lastActive: z.number(), admissionsOpen: z.boolean(), allowPlayerGames: z.boolean().default(true), theme: z.enum(['sage', 'sunset', 'midnight']).default('sage'), ownerAccountId: z.string().nullable().default(null), name: z.string().default('Our little room'), members: z.array(z.string()).max(4).default([]), banned: z.array(z.string()).default([]), memberCode: z.string().default(''), memberUntil: z.number().default(0), visitorUntil: z.number().default(0), emptySince: z.number().nullable().default(null), lastPresenceAt: z.number().default(0), messages: z.array(z.object({ id: z.string(), accountId: z.string().nullable(), nickname: z.string(), text: z.string().max(1000), createdAt: z.number() })).max(200).default([]), ticTacToe: ticTacToeSchema.nullable().default(null) });
 const sessionSchema = z.object({ csrf: z.string(), expiresAt: z.number(), roomId: z.string().nullable(), accountId: z.string().nullable().default(null), authenticatedAt: z.number().nullable().default(null) });
 const accountSchema = z.object({ id: z.string(), username: z.string().nullable(), passwordHash: z.string().nullable(), recoveryHash: z.string().nullable().default(null), googleSubject: z.string().nullable(), nickname: z.string(), avatar: z.enum(AVATARS), avatarDesign: designSchema.default(null), provider: z.enum(['password', 'google']), categories: z.object({ friends: z.string(), special: z.string() }).default({ friends: 'Friends', special: 'My special person' }), createdAt: z.number() });
 const receiptSchema = z.record(z.string(), z.object({ fingerprint: z.string(), result: z.unknown(), at: z.number() }));
@@ -66,7 +66,7 @@ export class Rooms {
       }
     }
     for (const room of Object.values(this.state.rooms)) { room.lastPresenceAt ||= this.clock(); room.emptySince ??= room.lastPresenceAt; for (const p of room.players) p.disconnectedAt ??= room.lastPresenceAt; }
-    for (const room of Object.values(this.state.rooms)) if (room.ticTacToe) stopTicTacToe(room.ticTacToe);
+    for (const room of Object.values(this.state.rooms)) if (room.ticTacToe) { stopTicTacToe(room.ticTacToe); room.ticTacToe.scores = room.ticTacToe.scores.filter(row => row.key?.startsWith('account:')); }
     await this.storage.save(this.state);
     await this.transact(() => {});
   }
@@ -488,7 +488,7 @@ export class Rooms {
     const visit = room.players.find(p => p.sessionId === sessionId);
     return {
       id: room.id, revision: room.revision, phase: room.players.length >= 2 ? 'lobby' : 'waiting',
-      code: owner ? room.code : '', isOwner: owner,
+      code: owner ? room.code : '', isOwner: owner, allowPlayerGames: room.allowPlayerGames,
       players: room.players.map(p => {
         const peer = this.state.sessions[p.sessionId]?.accountId;
         const connection = viewer && peer && viewer !== peer ? Object.values(this.state.connections).find(c => (c.a === viewer && c.b === peer) || (c.b === viewer && c.a === peer)) : null;
@@ -640,7 +640,7 @@ export class Rooms {
       if (session.account) do { memberCode = roomCode(); } while (memberCode === code || Object.values(this.state.rooms).some(r => r.code === memberCode || r.memberCode === memberCode));
       const id = random();
       const player = { id: random(), sessionId, nickname: session.account?.nickname || input.nickname, avatar: session.account?.avatar || 'moss' as const, avatarDesign: session.account?.avatarDesign || null, seat: 1, disconnectedAt: this.clock(), joinedAt: this.clock() };
-      this.state.rooms[id] = { id, ownerId: player.id, invitationHash: hash(invitation), code, players: [player], revision: 1, createdAt: this.clock(), lastActive: this.clock(), admissionsOpen: true, theme: 'sage', ownerAccountId: session.account?.id || null, name: input.name ?? 'Our little room', members: session.account ? [session.account.id] : [], banned: [], ticTacToe: null, memberCode, memberUntil: session.account ? this.clock() + 86400000 : 0, visitorUntil: this.clock() + (session.account ? 86400000 : policy.absolute), emptySince: this.online.get(sessionId)?.size ? null : this.clock(), lastPresenceAt: this.clock(), messages: [] };
+      this.state.rooms[id] = { id, ownerId: player.id, invitationHash: hash(invitation), code, players: [player], revision: 1, createdAt: this.clock(), lastActive: this.clock(), admissionsOpen: true, allowPlayerGames: true, theme: 'sage', ownerAccountId: session.account?.id || null, name: input.name ?? 'Our little room', members: session.account ? [session.account.id] : [], banned: [], ticTacToe: null, memberCode, memberUntil: session.account ? this.clock() + 86400000 : 0, visitorUntil: this.clock() + (session.account ? 86400000 : policy.absolute), emptySince: this.online.get(sessionId)?.size ? null : this.clock(), lastPresenceAt: this.clock(), messages: [] };
       this.state.sessions[sessionId].roomId = id;
       return { ...this.current(sessionId), invitation };
     }));
@@ -671,14 +671,15 @@ export class Rooms {
       if (input.type !== 'chat' && !(input.type === 'ticTacToe' && input.game && ['move', 'hand', 'resign'].includes(input.game.action)) && room.revision !== input.expectedRevision) throw new AppError('STALE', 'The room changed. We have refreshed it; please try again.', 409);
       const owner = this.owns(room, sessionId);
       let invitation: string | undefined;
-      if (['close', 'regenerateInvite', 'reopen', 'theme', 'memberInvite', 'remove', 'rename', 'saveRoom', 'revokeCodes', 'clearChat'].includes(input.type) && !owner) throw new AppError('OWNER_ONLY', 'Only the room creator can change the room settings.', 403);
+      if (['close', 'regenerateInvite', 'reopen', 'theme', 'memberInvite', 'remove', 'rename', 'saveRoom', 'revokeCodes', 'clearChat', 'gameSettings'].includes(input.type) && !owner) throw new AppError('OWNER_ONLY', 'Only the room creator can change the room settings.', 403);
       if (input.type === 'close') this.removeRoom(room);
       else if (input.type === 'leave') this.detach(sessionId);
       else {
+        if (input.type === 'gameSettings') { if (input.allowPlayerGames === undefined) throw new AppError('INVALID_INPUT', 'Choose who can start games.'); room.allowPlayerGames = input.allowPlayerGames; }
         if (input.type === 'ticTacToe') {
           if (!input.game) throw new AppError('INVALID_INPUT', 'Choose a game action.');
           const game = room.ticTacToe ||= emptyTicTacToe();
-          try { actTicTacToe(game, input.game, this.gameContext(room, sessionId));
+          try { actTicTacToe(game, input.game, {...this.gameContext(room, sessionId), owner: owner || (room.allowPlayerGames && ['open','start','next','rematch'].includes(input.game.action))});
             if (connectionId && ['open', 'start', 'rematch', 'next'].includes(input.game.action)) {
               this.gameViewers.set(connectionId, {roomId: room.id, sessionId}); this.watchedRooms.add(room.id);
             }

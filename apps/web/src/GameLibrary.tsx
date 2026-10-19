@@ -15,9 +15,9 @@ export function GameLibrary({ open, onClose, canPlay, onPlay }: { open: boolean;
   return <dialog ref={dialog} className="dialog game-library" aria-labelledby="library-title" onCancel={onClose}>
     <div className="library-heading"><div><p className="eyebrow">PICK A LITTLE ADVENTURE</p><h2 id="library-title">The games library.</h2><p>Tic-tac-toe is ready. More games are on their way. All free for now.</p></div><button className="icon-button" aria-label="Close game library" onClick={onClose}>×</button></div>
     {!canPlay && <p className="game-help">The room owner chooses the game. Everyone can watch and volunteer to play.</p>}
-    <div className="library-grid">{catalogue.map(game => <article className="library-card" key={game.name} tabIndex={0} aria-label={game.kind === 'tiles' ? 'Tic-tac-toe, available now' : `${game.name}, coming soon`}>
-      <div className={`game-cover cover-${game.kind}`}><span className="cover-mark" aria-hidden="true">{game.mark}</span><span className="cover-status">{game.kind === 'tiles' ? 'Free · ready to play' : 'Coming soon'}</span><button className="game-play" disabled={game.kind !== 'tiles' || !canPlay} onClick={onPlay} aria-label={game.kind === 'tiles' ? 'Play Tic-tac-toe' : `Play ${game.name} — coming soon`}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z" /></svg></button></div>
-      <div className="game-card-heading"><h3>{game.name}</h3><span>{game.players}{game.players !== 'To be confirmed' && ' players'}</span></div><p>{game.description}</p>
-    </article>)}</div>
+    <div className="library-grid">{catalogue.map(game => <button type="button" className="library-card" key={game.name} disabled={game.kind !== 'tiles' || !canPlay} onClick={onPlay} aria-label={game.kind === 'tiles' ? 'Play Tic-tac-toe' : `Play ${game.name} — coming soon`}>
+      <div className={`game-cover cover-${game.kind}`}><span className="cover-mark" aria-hidden="true">{game.mark}</span><span className="cover-status">{game.kind === 'tiles' ? 'Free · ready to play' : 'Coming soon'}</span></div>
+      <div className="game-card-heading"><strong>{game.name}</strong><span>{game.players}{game.players !== 'To be confirmed' && ' players'}</span></div><p>{game.description}</p>
+    </button>)}</div>
   </dialog>;
 }

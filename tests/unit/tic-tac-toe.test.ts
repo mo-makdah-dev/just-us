@@ -10,6 +10,13 @@ function setup(count = 4) {
   return { state, ctx, recorded, act, move };
 }
 describe('authoritative tic-tac-toe rules', () => {
+  it('records only account players in a mixed guest/account match and hides legacy guest rows', () => {
+    const {state,ctx,act,recorded}=setup(2);ctx.players[1].key='guest:b';
+    act({action:'start',players:['a','b']});ctx.self='b';act({action:'resign',matchId:state.match!.id});
+    expect(state.scores).toHaveLength(1);expect(state.scores[0].key).toBe('account:a');expect(recorded).toHaveLength(1);
+    state.scores.push({...state.scores[0],id:'old-guest',key:'guest:old'});
+    expect(projectTicTacToe(state,'a','account:a').scores).toHaveLength(1);
+  });
   it('turns off an abandoned session despite spectators and preserves results', () => {
     const {state,ctx,act,recorded}=setup();
     act({action:'start',players:['a','b']});

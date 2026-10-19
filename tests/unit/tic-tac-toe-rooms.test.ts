@@ -24,8 +24,9 @@ async function setup(accounts = false) {
   return { rooms, storage, a, b, spectator, game, send, ids, advance: (ms: number) => { now += ms; }, now: () => now };
 }
 it('keeps spectators read-only, enforces turns, scores exactly once and restarts with the TV off', async () => {
-  const { rooms, storage, a, b, spectator, game, ids, now } = await setup(true);
+  const { rooms, storage, a, b, spectator, game, send, ids, now } = await setup(true);
   const players = ids().filter(p => p.nickname !== 'Casey').map(p => p.id);
+  await send(a.sessionId,'gameSettings',{allowPlayerGames:false});
   await expect(game(spectator.sessionId, { action: 'start', players })).rejects.toMatchObject({ code: 'OWNER_ONLY' });
   await game(spectator.sessionId, { action: 'hand', raised: true });
   await game(a.sessionId, { action: 'start', players });
@@ -57,7 +58,7 @@ it('pauses during reconnect grace, then forfeits once; leaving resolves immediat
   await rooms.sweep(); expect(rooms.view(a.sessionId).room!.ticTacToe!.match!.status).toBe('playing');
   advance(policy.grace + 1); await rooms.sweep(); await rooms.sweep();
   expect(rooms.view(a.sessionId).room!.ticTacToe!.match!.status).toBe('forfeit');
-  expect(rooms.view(a.sessionId).room!.ticTacToe!.scores.map(s => s.played)).toEqual([1, 1]);
+  expect(rooms.view(a.sessionId).room!.ticTacToe!.scores.map(s => s.played)).toEqual([]);
   await send(a.sessionId, 'regenerateInvite');
   await rooms.join(b.sessionId, { commandId: randomUUID(), nickname: 'Blair', avatar: 'peach', invitation: rooms.view(a.sessionId).room!.code }); await rooms.connect(b.sessionId, 'b2');
   await game(a.sessionId, { action: 'start', players: ids().filter(p => p.nickname !== 'Casey').map(p => p.id) });
@@ -130,3 +131,17 @@ it('counts TV viewers per tab and clears the board on the last viewer disconnect
   await rooms.disconnect(a.sessionId,'second'); expect(rooms.view(a.sessionId).room!.ticTacToe!.match).toBeNull();
 });
 
+
+it('lets players start games by default and reserves the setting and destructive controls for the owner', async () => {
+  const {rooms,a,b,send,game,ids,storage,now}=await setup();
+  expect(rooms.view(b.sessionId).room!.allowPlayerGames).toBe(true);
+  await game(b.sessionId,{action:'open'});
+  await game(b.sessionId,{action:'start',players:ids().slice(0,2).map(p=>p.id)});
+  await expect(game(b.sessionId,{action:'cancel'})).rejects.toMatchObject({code:'OWNER_ONLY'});
+  await expect(send(b.sessionId,'gameSettings',{allowPlayerGames:false})).rejects.toMatchObject({code:'OWNER_ONLY'});
+  await game(a.sessionId,{action:'cancel'});await game(a.sessionId,{action:'lobby'});
+  await send(a.sessionId,'gameSettings',{allowPlayerGames:false});
+  await expect(game(b.sessionId,{action:'open'})).rejects.toMatchObject({code:'OWNER_ONLY'});
+  await expect(game(b.sessionId,{action:'start',players:ids().slice(0,2).map(p=>p.id)})).rejects.toMatchObject({code:'OWNER_ONLY'});
+  const restored=new Rooms(storage,now);await restored.init();expect(restored.view(a.sessionId).room!.allowPlayerGames).toBe(false);
+});

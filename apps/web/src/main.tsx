@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import { useGameAudioUnlock } from './useMoveSound.js';
 import { io, type Socket } from 'socket.io-client';
 import { Avatar } from '../../../packages/avatar/src/Avatar.js';
 import { AVATARS, ROOM_PROTOCOL_VERSION, type AvatarId, type CommandResult, type RoomCommand, type RoomView, type SessionView, type WireResult } from '../../../packages/protocol/src/index.js';
@@ -53,6 +54,7 @@ function RoomIllustration() {
 }
 
 function App() {
+  useGameAudioUnlock();
   const [session, setSession] = useState<SessionView | null>(null);
   const [route, setRoute] = useState(location.pathname + location.search);
   const resolvedRoute = resolveRoute(route);
@@ -337,7 +339,7 @@ function App() {
       {(error || notice) && <div className={`toast ${error ? 'error-toast' : ''}`} role={error ? 'alert' : 'status'}><span>{error || notice}</span><button aria-label="Dismiss message" onClick={() => { setError(''); setNotice(''); }}><Icon name="close" size={16} /></button></div>}
       {!loading && !session && <div className="retry-panel"><button className="button secondary" onClick={() => { setLoading(true); setError(''); reload().catch(e => setError(e.message)).finally(() => setLoading(false)); }}>Try connecting again</button></div>}
     </main>
-    <GameLibrary open={libraryOpen && !!room} onClose={() => setLibraryOpen(false)} canPlay={!!room?.isOwner && !disabled} onPlay={() => { setNotice(''); setLibraryOpen(false); setRoomTab('room'); void command('ticTacToe', undefined, { game: { action: 'open' } }).then(ok => { if (ok) { setGameVisible(true); window.scrollTo({ top: 0 }); } }); }} />
+    <GameLibrary open={libraryOpen && !!room} onClose={() => setLibraryOpen(false)} canPlay={!!room && (room.isOwner || room.allowPlayerGames !== false || !!room.ticTacToe?.open) && !disabled} onPlay={() => { setNotice(''); setLibraryOpen(false); setRoomTab('room'); if (room?.ticTacToe?.open) { setGameVisible(true); return; } void command('ticTacToe', undefined, { game: { action: 'open' } }).then(ok => { if (ok) { setGameVisible(true); window.scrollTo({ top: 0 }); } }); }} />
     <HelpDialog open={helpOpen} onClose={() => setHelpOpen(false)} />
     <dialog ref={dialog} onPointerDown={event => { const r = event.currentTarget.getBoundingClientRect(); backdropPress.current = event.target === event.currentTarget && (event.clientX < r.left || event.clientX > r.right || event.clientY < r.top || event.clientY > r.bottom); }} onClick={event => { if (backdropPress.current && event.target === event.currentTarget && !busy) { const rect = event.currentTarget.getBoundingClientRect(); if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) { setMode(null); setConfirm(null); setError(''); } } }} className="dialog" aria-label={confirm ? 'Confirm room action' : mode === 'create' ? 'Create a room' : 'Join a room'} onCancel={event => { if (busy) { event.preventDefault(); return; } setMode(null); setConfirm(null); setError(''); }}>
       <div className="dialog-inner"><button className="dialog-close icon-button" aria-label="Close dialog" disabled={busy} onClick={() => { setMode(null); setConfirm(null); setError(''); }}><Icon name="close" /></button>
