@@ -20,9 +20,9 @@ test('dashboard URLs, history, simplified settings and concurrent tabs', async (
   await expect(page).toHaveURL(/section=scores$/);
   await expect(page.getByRole('heading', { name: 'Tic-tac-toe', exact: true })).toHaveCount(0);
   await page.goBack();
-  await expect(page.getByRole('heading', { name: 'Your people.', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Your favourite people.', exact: true })).toBeVisible();
   await page.goBack(); await expect(page).toHaveURL(/\/dashboard$/);
-  await page.goForward(); await expect(page.getByRole('heading', { name: 'Your people.', exact: true })).toBeVisible();
+  await page.goForward(); await expect(page.getByRole('heading', { name: 'Your favourite people.', exact: true })).toBeVisible();
   await expect(page.getByRole('link', {name:'Your people', exact:true})).toHaveAttribute('aria-current','page');
   await page.locator('.account-nav-button').click();
   await expect(page.getByLabel('Nickname', {exact:true})).toHaveValue('UX Player');

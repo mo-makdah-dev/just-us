@@ -37,7 +37,7 @@ export function PeoplePanel({ session, inviteToken, onConsumed }: { session: Ses
     finally { setBusy(false); }
   }
   const specialPerson = people?.connections.find(p => p.kind === 'special');
-  return <section className="people-page-panel"><div className="people-intro"><p className="eyebrow">GOOD COMPANY, KEPT CLOSE</p><h2>Your people.</h2><p>One special person. A circle of friends. Your own names for both.</p></div>
+  return <section className="people-page-panel"><div className="people-intro"><p className="eyebrow">GOOD COMPANY, KEPT CLOSE</p><h2>Your people.</h2><p>Your favourite person and the friends who make it a good night.</p></div>
     {inviteToken && <section className="connection-invitation"><h3>{invitePreview ? `${invitePreview.nickname} saved you a place.` : 'A people invitation is waiting.'}</h3>{invitePreview && <><Avatar id={invitePreview.avatar} design={invitePreview.avatarDesign} /><p>{invitePreview.kind === 'special' ? 'Become each other’s one special person. You both need an available special place.' : 'Accept to join each other’s friends.'}</p><button className="button primary" disabled={busy || invitePreview.isYou} onClick={() => action({ type: 'accept', token: inviteToken })}>Accept {invitePreview.kind === 'special' ? 'special-person' : 'friend'} invitation</button></>}<button className="text-button" onClick={onConsumed}>Dismiss invitation</button></section>}
     {error && <p className="form-error" role="alert">{error}</p>}{message && <p className="success-message" role="status">{message}</p>}
     <div className="people-category-grid people-rows">{(['special', 'friend'] as const).map(kind => {
