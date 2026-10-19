@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 test('stable room URLs, compact code controls and friend invitation dialog', async ({page,browser}) => {
+  await page.addInitScript(() => Object.defineProperty(navigator,'clipboard',{value:{writeText:async(text:string)=>{(window as unknown as {copied:string}).copied=text;}}}));
   await page.goto('/'); await page.getByRole('button',{name:'Join free',exact:true}).click();
   const signup=page.getByRole('dialog',{name:'Create a free account'});
   await signup.getByLabel('Username',{exact:true}).fill(`links_${Date.now()}`);
@@ -19,6 +20,15 @@ test('stable room URLs, compact code controls and friend invitation dialog', asy
   await page.locator('summary').filter({hasText:'Invite someone'}).click();
   const visitor=page.getByLabel('Visitor code',{exact:true}), member=page.getByLabel('Membership code',{exact:true});
   await expect(visitor).toHaveValue(/^[A-Z2-9]{10}$/); await expect(member).toHaveValue(/^[A-Z2-9]{10}$/);
+  for (const kind of ['visitor','membership']) {
+    const code = await (kind === 'visitor' ? visitor : member).inputValue();
+    await page.getByRole('button',{name:'Copy '+kind+' code',exact:true}).click();
+    expect(await page.evaluate(()=>(window as unknown as {copied:string}).copied)).toBe(code);
+    await page.getByRole('button',{name:'Copy '+kind+' link',exact:true}).click();
+    expect(await page.evaluate(()=>(window as unknown as {copied:string}).copied)).toBe(new URL('/#invite='+code,page.url()).href);
+  }
+  await expect(page.getByRole('button',{name:'Revoke open codes',exact:true})).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'Save this room to my account',exact:true})).toHaveCount(0);
   const oldVisitor=await visitor.inputValue(), oldMember=await member.inputValue();
   await page.getByRole('button',{name:'Refresh visitor code',exact:true}).click();
   await expect(visitor).not.toHaveValue(oldVisitor);

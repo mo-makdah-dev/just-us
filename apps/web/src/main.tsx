@@ -71,6 +71,8 @@ function App() {
   const [nickname, setNickname] = useState('');
   const [avatar, setAvatar] = useState<AvatarId>('moss');
   const [invite, setInvite] = useState('');
+  const [linkInvite, setLinkInvite] = useState(false);
+  const [guestChosen, setGuestChosen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [connection, setConnection] = useState<'connecting' | 'online' | 'offline' | 'conflict'>('connecting');
   const [confirm, setConfirm] = useState<'leave' | 'close' | null>(null);
@@ -158,7 +160,7 @@ function App() {
     const current = resolveRoute(location.pathname + location.search);
     if (current.kind !== 'guest') return;
     if (!value) {
-      if (!session?.account) writeRoute(session?.room ? '/room/' + session.room.id : '/', true);
+      if (!session?.account) { writeRoute(session?.room ? '/room/' + session.room.id : '/', true); if (resumeMode.current) { setMode(resumeMode.current); resumeMode.current = null; } }
     } else if (value !== 'recover') {
       const next = safeReturnPath(new URL(location.href).searchParams.get('next'));
       writeRoute((value === 'login' ? '/sign-in' : '/sign-up') + (next ? '?next=' + encodeURIComponent(next) : ''), true);
@@ -170,7 +172,7 @@ function App() {
     setSession(data); setError('');
     if (data.account && !session?.account && resolveRoute(location.pathname + location.search).kind === 'guest') { writeRoute(safeReturnPath(new URL(location.href).searchParams.get('next')) || '/dashboard', true); }
     else if (!data.account && session?.account) writeRoute(data.room ? '/room/' + data.room.id : '/', true);
-    if (resumeMode.current && !data.room) { setMode(resumeMode.current); resumeMode.current = null; }
+    if (resumeMode.current && (resumeMode.current === 'join' || !data.room)) { setMode(resumeMode.current); resumeMode.current = null; }
     if (data.account && !session?.account) setNotice('Your free account is ready. Make yourself at home.');
     else if (!data.account && session?.account) setNotice('You’re now a guest. Your current room is still here.');
   }
@@ -181,7 +183,7 @@ function App() {
     try { localStorage.removeItem('just-us-nickname'); localStorage.removeItem('just-us-avatar'); } catch {}
     const consumeLink = () => {
       const match = window.location.hash.match(/^#invite=([a-f0-9]{32}|[A-Z2-9]{10})$/);
-      if (match) { setInvite(match[1]); setMode('join'); window.history.replaceState(null, '', window.location.pathname); }
+      if (match) { setInvite(match[1]); setLinkInvite(true); setGuestChosen(false); setMode('join'); window.history.replaceState(null, '', window.location.pathname); }
       setRoute(location.pathname + location.search);
       const peopleMatch = location.hash.match(/^#connect=([a-f0-9]{48})$/);
       if (peopleMatch) { setPeopleToken(peopleMatch[1]); setPage('account'); history.replaceState(null, '', '/account?section=people'); setRoute('/account?section=people'); }
@@ -191,7 +193,7 @@ function App() {
     const status = new URLSearchParams(location.search).get('auth');
     if (status) {
       let destination = location.pathname;
-      try { const intent = takeAuthReturn(sessionStorage); if (intent) { setPage(intent.page); setMode(intent.mode); if (intent.invitation) setInvite(intent.invitation); if (intent.peopleToken) setPeopleToken(intent.peopleToken); destination = intent.returnPath || (intent.page === 'home' ? '/' : intent.page === 'rooms' ? '/dashboard' : '/account'); } } catch {}
+      try { const intent = takeAuthReturn(sessionStorage); if (intent) { setPage(intent.page); setMode(intent.mode); if (intent.invitation) { setInvite(intent.invitation); setLinkInvite(true); } if (intent.peopleToken) setPeopleToken(intent.peopleToken); destination = intent.returnPath || (intent.page === 'home' ? '/' : intent.page === 'rooms' ? '/dashboard' : '/account'); } } catch {}
       history.replaceState(null, '', destination); setRoute(destination); setPage(destination.startsWith('/account') ? 'account' : destination.startsWith('/dashboard') ? 'rooms' : 'home');
       if (status === 'success') setNotice('You’re signed in. Welcome to your little space.');
       else setError(status === 'conflict' ? 'This account already has a room in another browser. Your guest room has been kept.' : status === 'cancelled' ? 'Sign-in was cancelled. Your guest room is still here.' : 'Sign-in could not be completed. Your guest room is still here; please try again.');
@@ -245,7 +247,7 @@ function App() {
   useEffect(() => { if (room) { setMode(null); } }, [room?.id]);
 
 
-  function begin(value: Mode) { setRoomName(''); setError(''); setMode(value); pending.current = null; }
+  function begin(value: Mode) { setLinkInvite(false); setGuestChosen(false); setInvite(''); setRoomName(''); setError(''); setMode(value); pending.current = null; }
   function remember() { cache.remove('just-us-nickname'); cache.remove('just-us-avatar'); }
   function result(data: CommandResult) {
     if (data.invitation && data.room) cache.set(`just-us-invite:${data.room.id}`, data.invitation, true);
@@ -339,13 +341,15 @@ function App() {
     <HelpDialog open={helpOpen} onClose={() => setHelpOpen(false)} />
     <dialog ref={dialog} onPointerDown={event => { const r = event.currentTarget.getBoundingClientRect(); backdropPress.current = event.target === event.currentTarget && (event.clientX < r.left || event.clientX > r.right || event.clientY < r.top || event.clientY > r.bottom); }} onClick={event => { if (backdropPress.current && event.target === event.currentTarget && !busy) { const rect = event.currentTarget.getBoundingClientRect(); if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) { setMode(null); setConfirm(null); setError(''); } } }} className="dialog" aria-label={confirm ? 'Confirm room action' : mode === 'create' ? 'Create a room' : 'Join a room'} onCancel={event => { if (busy) { event.preventDefault(); return; } setMode(null); setConfirm(null); setError(''); }}>
       <div className="dialog-inner"><button className="dialog-close icon-button" aria-label="Close dialog" disabled={busy} onClick={() => { setMode(null); setConfirm(null); setError(''); }}><Icon name="close" /></button>
-        {confirm ? <><span className="eyebrow">UNTIL NEXT TIME</span><h2>{confirm === 'close' ? 'Close this little space?' : 'Heading out?'}</h2><p>{confirm === 'close' ? 'This deletes the room for everyone. You can always create a fresh one.' : 'You will give up your seat. Your person can stay and open a fresh invitation.'}</p>{error && <p className="form-error" role="alert">{error}</p>}<button className="button primary full" disabled={busy} onClick={() => command(confirm)}>{busy ? 'One moment…' : confirm === 'close' ? 'Close the room' : 'Leave the room'}</button><button className="button quiet full" disabled={busy} onClick={() => setConfirm(null)}>Stay a little longer</button></> : <form onSubmit={submit}><p className="eyebrow">{mode === 'create' ? 'MAKE YOURSELF AT HOME' : 'YOUR SEAT IS WAITING'}</p><h2>{mode === 'create' ? 'Create your lounge' : 'Join your people'}</h2><p className="dialog-description">{mode === 'create' ? 'Name your room and make yourself comfortable.' : 'Your person is just a room code away.'}</p>
-          {!session?.account && <div className="room-auth-prompt"><span>Temporary visitor · nickname only</span><button type="button" className="text-button" onClick={() => openAuth('login')}>Sign in for saved membership & chat →</button></div>}
+        {confirm ? <><span className="eyebrow">UNTIL NEXT TIME</span><h2>{confirm === 'close' ? 'Close this little space?' : 'Heading out?'}</h2><p>{confirm === 'close' ? 'This deletes the room for everyone. You can always create a fresh one.' : 'You will give up your seat. Your person can stay and open a fresh invitation.'}</p>{error && <p className="form-error" role="alert">{error}</p>}<button className="button primary full" disabled={busy} onClick={() => command(confirm)}>{busy ? 'One moment…' : confirm === 'close' ? 'Close the room' : 'Leave the room'}</button><button className="button quiet full" disabled={busy} onClick={() => setConfirm(null)}>Stay a little longer</button></> : <form onSubmit={submit}><p className="eyebrow">{mode === 'create' ? 'MAKE YOURSELF AT HOME' : 'YOUR SEAT IS WAITING'}</p><h2>{mode === 'create' ? 'Create your lounge' : 'Join your people'}</h2><p className="dialog-description">{mode === 'create' ? 'Name your room and make yourself comfortable.' : 'Your people have saved you a seat.'}</p>
+          {error && <p className="form-error" role="alert">{error}</p>}
+          {mode === 'join' && linkInvite && !session?.account && !guestChosen ? <div className="invitation-entry-choices"><button type="button" className="button primary full" onClick={() => openAuth('login')}>Log in</button><button type="button" className="invitation-copy-link" onClick={() => setGuestChosen(true)}>Join as a guest</button></div> : <>
+          {!session?.account && !linkInvite && <div className="room-auth-prompt"><span>Temporary visitor · nickname only</span><button type="button" className="text-button" onClick={() => openAuth('login')}>Sign in for saved membership & chat →</button></div>}
           {mode === 'create' && <><label className="field-label" htmlFor="new-room-name">Room name</label><input id="new-room-name" placeholder="Our little room" maxLength={40} value={roomName} onChange={e => setRoomName(e.target.value)} /><p className="input-help">{session?.account ? 'Give your space a name. You can change it later in room settings.' : 'Give this visit a name.'}</p></>}<label className="field-label" htmlFor="nickname">What should we call you?</label><input autoComplete="nickname" autoFocus id="nickname" placeholder="Your nickname" maxLength={24} required value={nickname} onChange={e => setNickname(e.target.value)} />
           <p className="input-help">{session?.account ? 'Your nickname will also update on your saved profile. Edit your pixels in My account.' : 'Visitors use a temporary nickname and a standard avatar.'}</p>
-          {mode === 'join' && <><label className="field-label" htmlFor="invitation">Room code or invite link</label><input id="invitation" placeholder="e.g. AB23 CD45 EF" required value={invite} maxLength={300} autoComplete="off" spellCheck={false} onChange={e => setInvite(e.target.value)} /></>}
-          {error && <p className="form-error" role="alert">{error}</p>}<button className="button primary full submit-button" aria-busy={busy} disabled={busy || !nickname.trim()}>{busy ? 'Making room…' : mode === 'create' ? 'Create our little room' : (session?.account ? 'Join their room' : 'Join as a visitor')}{!busy && <Icon name="arrow" />}</button><p className="dialog-footnote"><Icon name="lock" size={13} /> Visitor codes are single-use. Membership needs sign-in; joining as a visitor saves no membership.</p>
-        </form>}
+          {mode === 'join' && !linkInvite && <><label className="field-label" htmlFor="invitation">Room code or invite link</label><input id="invitation" placeholder="e.g. AB23 CD45 EF" required value={invite} maxLength={300} autoComplete="off" spellCheck={false} onChange={e => setInvite(e.target.value)} /></>}
+          <button className="button primary full submit-button" aria-busy={busy} disabled={busy || !nickname.trim()}>{busy ? 'Making room…' : mode === 'create' ? 'Create our little room' : (session?.account ? 'Join their room' : 'Join as a visitor')}{!busy && <Icon name="arrow" />}</button><p className="dialog-footnote"><Icon name="lock" size={13} /> Visitor codes are single-use. Membership needs sign-in; joining as a visitor saves no membership.</p>
+        </>}</form>}
       </div>
     </dialog>
     <AuthDialog onGoogleStart={() => { try { let code = invite.trim(); if (code.includes('#invite=')) code = new URL(code).hash.slice(8); saveAuthReturn(sessionStorage, { page, returnPath: safeReturnPath(route) || safeReturnPath(new URL(location.href).searchParams.get('next')) || undefined, mode: resumeMode.current, invitation: code.replace(/[\s-]/g, '').toUpperCase().match(/^[A-Z2-9]{10}$/) ? code.replace(/[\s-]/g, '').toUpperCase() : code, peopleToken }); } catch {} }} mode={authMode} setMode={changeAuthMode} session={session} initialNickname={nickname} initialAvatar={avatar} onSession={signedSession} onPending={value => { authPending.current = value; busyRef.current = value; }} />

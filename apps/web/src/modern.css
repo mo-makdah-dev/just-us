@@ -49,3 +49,13 @@ html{scroll-padding-top:100px}body{margin:0;background:var(--canvas);color:var(-
 #root .living-room-tv b, #root .living-room-tv small { display:block; }
 #root .living-room-tv small { margin-top:5px; line-height:1.5; }
 #root .living-room-return { margin-bottom:16px; }
+
+#root .invitation-copy-link { display:inline-block; border:0; background:none; color:#3167b2; padding:8px 0; font:inherit; font-size:12px; text-decoration:underline; text-underline-offset:3px; cursor:pointer; }
+#root .invitation-copy-link:disabled { opacity:.5; cursor:default; }
+#root .invitation-entry-choices { display:grid; justify-items:center; gap:10px; margin-top:24px; }
+#root .room-roster > div { display:flex; align-items:center; gap:12px; padding:14px 0; border-bottom:1px solid #eae4ef; }
+#root .room-roster > div > svg, #root .room-roster > div > .avatar { flex:0 0 38px; width:38px; height:38px; }
+#root .room-roster > div > span { flex:1; min-width:0; font-weight:600; }
+#root .room-roster small { font-size:11px; font-weight:400; color:#74677e; margin-left:6px; }
+#root .room-rename { display:grid; grid-template-columns:minmax(0,1fr) 40px; gap:8px; align-items:center; }
+#root .room-rename label { grid-column:1/-1; }
