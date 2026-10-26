@@ -55,7 +55,7 @@ export function RoomTools({ room, session, disabled, onCommand, onAuth, onRooms,
   const backdrop = useRef(false);
   const prepared = useRef({ visitor: false, membership: false });
   const [optionsOpen, setOptionsOpen] = useState(false), [invitesOpen, setInvitesOpen] = useState(false);
-  useEffect(() => { if (room.ticTacToe?.open) { setOptionsOpen(false); setInvitesOpen(false); } }, [room.ticTacToe?.open]);
+  useEffect(() => { if (room.gameSession) { setOptionsOpen(false); setInvitesOpen(false); } }, [room.ticTacToe?.open]);
   useEffect(() => { if (friendOpen) friendDialog.current?.showModal(); else friendDialog.current?.close(); }, [friendOpen]);
   useEffect(() => { if (!optionsOpen || !invitesOpen) { prepared.current = { visitor: false, membership: false }; return; } if (!room.isOwner || disabled) return;
     if (!prepared.current.visitor) { prepared.current.visitor = true; if (!room.code && room.players.length < 4) { void onCommand('regenerateInvite'); return; } }

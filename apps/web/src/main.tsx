@@ -8,9 +8,10 @@ import './styles.css';
 import './room.css';
 import './tic-tac-toe.css';
 import './modern.css';
+import './game-platform.css';
 import { AppNavigation, NavIcon } from './AppNavigation.js';
 import { guardRoute, resolveRoute, safeReturnPath } from './routes.js';
-import { TicTacToe } from './TicTacToe.js';
+import { GameScreen } from './GameScreen.js';
 import { AccessCards, AccountPage, AuthDialog, type AuthMode } from './Account.js';
 import { RecoveryDialog } from './Security.js';
 import { RoomInterior } from './RoomInterior.js';
@@ -93,7 +94,7 @@ function App() {
   const backdropPress = useRef(false);
   const modalActive = mode !== null || confirm !== null;
   const room = session?.room ?? null;
-  const showGame = gameVisible && !!room?.ticTacToe?.open;
+  const showGame = gameVisible && !!room?.gameSession;
   const guard = guardRoute(route, session, loading);
   useEffect(() => {
     if (guard.kind === 'redirect') { writeRoute(guard.to, true); return; }
@@ -103,12 +104,13 @@ function App() {
   useEffect(() => {
     const client = socket.current;
     if (!showGame || !room || !client?.connected) return;
-    const roomId = room.id;
-    void client.timeout(8000).emitWithAck('watchGame', {roomId, watching:true}).then((result: {ok:boolean}) => {
-      if (!result.ok) setGameVisible(false);
-    }).catch(() => setGameVisible(false));
-    return () => { if (client.connected) client.emit('watchGame', {roomId, watching:false}, () => {}); };
-  }, [showGame, room?.id, connection]);
+    const roomId = room.id,gameSessionId=room.gameSession?.id;
+    let current=true;
+    void client.timeout(8000).emitWithAck('watchGame', {roomId,gameSessionId, watching:true}).then((result: {ok:boolean}) => {
+      if (current&&!result.ok) setGameVisible(false);
+    }).catch(() => {if(current)setGameVisible(false);});
+    return () => {current=false; if (client.connected) client.emit('watchGame', {roomId,gameSessionId, watching:false}, () => {}); };
+  }, [showGame, room?.id, room?.gameSession?.id, connection]);
   useEffect(() => { setLibraryOpen(false); setRoomTab('room'); setGameVisible(false); }, [room?.id, route]);
   useEffect(() => {
     const latest = room?.messages.at(-1);
@@ -333,13 +335,13 @@ function App() {
         <div className="lobby-heading"><div><p className="eyebrow">YOUR PRIVATE LOUNGE</p><h1>{room.name}</h1></div><span className={`connection-pill ${connection === 'online' ? '' : 'muted'}`} role="status"><span className="presence-dot" />{connection === 'online' ? 'Room connected' : connection === 'conflict' ? 'Check your session' : 'Reconnecting…'}</span></div>
         {connection !== 'online' && <div className="connection-banner" role="status">Your seat is saved while we reconnect. Room controls will return when you’re back.<button className="text-button" onClick={() => { setError(''); setConnection('connecting'); socket.current?.connect(); }}>Try reconnecting</button></div>}
         <div className="room-mobile-tabs" role="group" aria-label="Room view"><button aria-pressed={roomTab === 'room'} onClick={() => setRoomTab('room')}>Our room</button><button aria-pressed={roomTab === 'chat'} onClick={() => setRoomTab('chat')}>Chat {unread > 0 && <span className="chat-unread" role="status" aria-label={`${unread} unread messages`}>{unread > 9 ? '9+' : unread}</span>}</button></div>
-        <div className="lobby-grid"><div className="lobby-main">{showGame && <><button className="text-button living-room-return" onClick={() => setGameVisible(false)}>← Living room</button><TicTacToe room={room} disabled={disabled} onAction={game => command('ticTacToe', undefined, { game })} onLibrary={() => setLibraryOpen(true)}><RoomInterior onWatch={() => setGameVisible(true)} room={room} onLibrary={() => setLibraryOpen(true)} onTheme={theme => command('theme', theme)} disabled={disabled} /></TicTacToe></>}<section className="people-panel" hidden={showGame}><div className="panel-heading"><div><p className="eyebrow">MAKE YOURSELF AT HOME</p><h2>{room.name}</h2></div><span className="small-label">{room.players.length} / 4 HERE</span></div><RoomInterior onWatch={() => setGameVisible(true)} room={room} onLibrary={() => setLibraryOpen(true)} onTheme={theme => command('theme', theme)} disabled={disabled} /><div className="room-people-strip" aria-label="People in this room">{room.players.map(player => <div className="room-person-chip" key={player.id}><span className={`presence-dot ${player.connected ? '' : 'away-dot'}`} /><h3>{player.nickname}</h3>{player.isYou && <small>you</small>}{player.visitor && <span className="visitor-tag">visitor</span>}{!player.connected && <small>reconnecting</small>}</div>)}</div><p className="room-library-hint">Something to play? Open the games shelf in your room.</p></section>
+        <div className="lobby-grid"><div className="lobby-main">{showGame && <><button className="text-button living-room-return" onClick={() => setGameVisible(false)}>← Living room</button><GameScreen room={room} disabled={disabled} onAction={gameAction=>command('gameAction',undefined,{gameAction:{...gameAction,sessionId:room.gameSession!.id}})} onSession={sessionCommand=>command('gameSession',undefined,{sessionCommand})} onLibrary={()=>setLibraryOpen(true)}/></>}<section className="people-panel" hidden={showGame}><div className="panel-heading"><div><p className="eyebrow">MAKE YOURSELF AT HOME</p><h2>{room.name}</h2></div><span className="small-label">{room.players.length} / 4 HERE</span></div><RoomInterior onWatch={() => setGameVisible(true)} room={room} onLibrary={() => setLibraryOpen(true)} onTheme={theme => command('theme', theme)} disabled={disabled} /><div className="room-people-strip" aria-label="People in this room">{room.players.map(player => <div className="room-person-chip" key={player.id}><span className={`presence-dot ${player.connected ? '' : 'away-dot'}`} /><h3>{player.nickname}</h3>{player.isYou && <small>you</small>}{player.visitor && <span className="visitor-tag">visitor</span>}{!player.connected && <small>reconnecting</small>}</div>)}</div><p className="room-library-hint">Something to play? Open the games shelf in your room.</p></section>
         </div><RoomTools chatActive={roomTab === 'chat'} room={room} session={session} disabled={disabled} onCommand={(type, details) => command(type, undefined, details)} onAuth={() => openAuth('login')} onRooms={() => navigate('rooms')} /></div>
       </section>}
       {(error || notice) && <div className={`toast ${error ? 'error-toast' : ''}`} role={error ? 'alert' : 'status'}><span>{error || notice}</span><button aria-label="Dismiss message" onClick={() => { setError(''); setNotice(''); }}><Icon name="close" size={16} /></button></div>}
       {!loading && !session && <div className="retry-panel"><button className="button secondary" onClick={() => { setLoading(true); setError(''); reload().catch(e => setError(e.message)).finally(() => setLoading(false)); }}>Try connecting again</button></div>}
     </main>
-    <GameLibrary open={libraryOpen && !!room} onClose={() => setLibraryOpen(false)} canPlay={!!room && (room.isOwner || room.allowPlayerGames !== false || !!room.ticTacToe?.open) && !disabled} onPlay={() => { setNotice(''); setLibraryOpen(false); setRoomTab('room'); if (room?.ticTacToe?.open) { setGameVisible(true); return; } void command('ticTacToe', undefined, { game: { action: 'open' } }).then(ok => { if (ok) { setGameVisible(true); window.scrollTo({ top: 0 }); } }); }} />
+    <GameLibrary open={libraryOpen && !!room} onClose={() => setLibraryOpen(false)} canPlay={!!room && (room.isOwner || room.allowPlayerGames !== false || !!room.gameSession) && !disabled} onPlay={gameId => { setNotice(''); setLibraryOpen(false); setRoomTab('room'); if (room?.gameSession?.gameId===gameId) { setGameVisible(true); return; } void command('gameSession', undefined, { sessionCommand: { action: 'open', gameId } }).then(ok => { if (ok) { setGameVisible(true); window.scrollTo({ top: 0 }); } }); }} />
     <HelpDialog open={helpOpen} onClose={() => setHelpOpen(false)} />
     <dialog ref={dialog} onPointerDown={event => { const r = event.currentTarget.getBoundingClientRect(); backdropPress.current = event.target === event.currentTarget && (event.clientX < r.left || event.clientX > r.right || event.clientY < r.top || event.clientY > r.bottom); }} onClick={event => { if (backdropPress.current && event.target === event.currentTarget && !busy) { const rect = event.currentTarget.getBoundingClientRect(); if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) { setMode(null); setConfirm(null); setError(''); } } }} className="dialog" aria-label={confirm ? 'Confirm room action' : mode === 'create' ? 'Create a room' : 'Join a room'} onCancel={event => { if (busy) { event.preventDefault(); return; } setMode(null); setConfirm(null); setError(''); }}>
       <div className="dialog-inner"><button className="dialog-close icon-button" aria-label="Close dialog" disabled={busy} onClick={() => { setMode(null); setConfirm(null); setError(''); }}><Icon name="close" /></button>

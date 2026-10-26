@@ -22,17 +22,15 @@ test('cozy modern surfaces adapt to laptop, tablet and mobile with accessible co
     await capture(page,'room');await page.setViewportSize(sizes[0]);await audit('room');
     await page.getByRole('button',{name:'Open game library',exact:true}).click();await capture(page,'games',[sizes[0],sizes[2],sizes[3]]);await page.setViewportSize(sizes[0]);await audit('games');
     const disabled=page.getByRole('button',{name:'Play Bingo — coming soon',exact:true});await expect(disabled).toBeDisabled();expect(await disabled.evaluate(el=>getComputedStyle(el).cursor)).toBe('default');
-    await page.getByRole('button',{name:'Play Tic-tac-toe',exact:true}).click();await capture(page,'character-select',[sizes[0],sizes[2],sizes[3],sizes[4]]);await page.setViewportSize(sizes[0]);await audit('character-select');await page.getByRole('checkbox',{name:/Alex/}).check();await page.getByRole('checkbox',{name:/Jamie/}).check();await page.getByRole('button',{name:'Start selected match',exact:true}).click();await expect(page.getByRole('group',{name:'Tic-tac-toe board',exact:true})).toBeVisible();await capture(page,'playing',[sizes[0],sizes[2],sizes[3]]);
-    await expect(guest.getByRole('button',{name:'Watch Tic-tac-toe',exact:true})).toBeVisible();
-    await expect(guest.getByRole('group',{name:'Tic-tac-toe board',exact:true})).toHaveCount(0);
-    await guest.getByRole('button',{name:'Watch Tic-tac-toe',exact:true}).click();
+    await page.getByRole('button',{name:'Play Tic-tac-toe',exact:true}).click();await capture(page,'character-select',[sizes[0],sizes[2],sizes[3],sizes[4]]);await page.setViewportSize(sizes[0]);await audit('character-select');await guest.getByRole('button',{name:'Watch Tic-tac-toe',exact:true}).click();await guest.getByRole('button',{name:'Join game',exact:true}).click();await expect(page.locator('.waiting-seat.is-ready')).toHaveCount(2);await page.getByRole('button',{name:'Start game',exact:true}).click();await expect(page.getByRole('group',{name:'Tic-tac-toe board',exact:true})).toBeVisible();await capture(page,'playing',[sizes[0],sizes[2],sizes[3]]);
+
     await expect(guest.getByRole('group',{name:'Tic-tac-toe board',exact:true})).toBeVisible();
     await guest.reload();
     await expect(guest.getByRole('button',{name:'Watch Tic-tac-toe',exact:true})).toBeVisible();
     await expect(guest.getByRole('group',{name:'Tic-tac-toe board',exact:true})).toHaveCount(0);
     await page.getByRole('button',{name:'← Living room',exact:true}).click();
     await expect(page.getByRole('button',{name:'TV off — no game in progress',exact:true})).toBeVisible();
-    await expect.poll(async()=>page.evaluate(async()=> (await (await fetch('/api/session')).json()).data.room.ticTacToe.match)).toBeNull();
+    await expect.poll(async()=>page.evaluate(async()=> (await (await fetch('/api/session')).json()).data.room.gameSession)).toBeNull();
   }finally{await other.close();}
   console.log(JSON.stringify(issues));expect(issues).toEqual([]);
 });

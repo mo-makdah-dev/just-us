@@ -4,12 +4,14 @@ export type AvatarId = typeof AVATARS[number];
 export const PIXEL_COLORS = ['transparent', '#332e40', '#fff4dd', '#f2c7a6', '#dca77e', '#b97f60', '#895c47', '#704532', '#b5784e', '#c77f70', '#ad7588', '#8e78aa', '#668ca2', '#648573', '#b59043', '#dce6cb', '#e3d8ec', '#d6e5ed', '#f3e8ba', '#edd8df'] as const;
 export type AvatarDesign = { version: 1; pixels: number[] };
 export type GameTotals = { played: number; wins: number; draws: number; losses: number; points: number; forfeits: number };
-export type TicTacToeMode = 'single' | 'knockout' | 'league';
-export type TicTacToeEntry = { id: string; name: string; signedIn?: boolean };
-export type TicTacToeMatch = { id: string; x: TicTacToeEntry; o: TicTacToeEntry; board: ('X' | 'O' | null)[]; turn: 'X' | 'O'; status: 'playing' | 'won' | 'draw' | 'forfeit' | 'void'; winner: string | null; line: number[]; fixtureId: string | null; endedAt: number | null };
-export type TicTacToeFixture = { id: string; x: string; o: string | null; status: 'pending' | 'done' | 'void'; winner: string | null; draw: boolean; round: number; attempt: number };
-export type TicTacToeCompetition = { id: string; mode: 'knockout' | 'league'; status: 'running' | 'completed' | 'cancelled'; entrants: TicTacToeEntry[]; fixtures: TicTacToeFixture[]; round: number; champions: string[] };
-export type TicTacToeView = { open: boolean; hands: string[]; match: TicTacToeMatch | null; competition: TicTacToeCompetition | null; scores: (GameTotals & { id: string; name: string; isYou: boolean })[]; recent: { id: string; x: string; o: string; outcome: string; winner: string | null }[] };
+export type { TicTacToeMode, TicTacToeEntry, TicTacToeMatch, TicTacToeFixture, TicTacToeCompetition, TicTacToeView, TicTacToeAction, TicTacToeGameAction } from './games/tic-tac-toe.js';
+import type { TicTacToeView, TicTacToeAction, TicTacToeGameAction } from './games/tic-tac-toe.js';
+export type GameContracts = { 'tic-tac-toe': { action: TicTacToeGameAction; view: TicTacToeView } };
+export type GameId = keyof GameContracts;
+export type GameAction = { [K in GameId]: { gameId: K; action: GameContracts[K]['action']; sessionId?:string } }[GameId];
+export type GameSessionInfo = { id: string; gameId: GameId; mode: string; participants: { playerId: string; ready: boolean }[]; phase: 'waiting' | 'playing' | 'results'; canConfigure: boolean };
+export type GameSessionView = { [K in GameId]: GameSessionInfo & { gameId: K; game: GameContracts[K]['view'] } }[GameId];
+export type GameSessionCommand = ({ action: 'open'; gameId: GameId } | { action: 'join' | 'leave' | 'start' } | { action: 'ready'; ready: boolean } | { action: 'mode'; mode: string }) & {sessionId?:string};
 export type PlayerView = {
   id: string; nickname: string; avatar: AvatarId; seat: number;
   connected: boolean; reconnectUntil: number | null; isYou: boolean;
@@ -26,6 +28,8 @@ export type RoomView = {
   members: { accountId: string; nickname: string; avatar: AvatarId; owner: boolean }[];
   pendingInvitations: { id: string; nickname: string; expiresAt: number }[];
   chatEnabled: boolean; messages: { id: string; nickname: string; text: string; createdAt: number; isYou: boolean }[];
+  gameSession?: GameSessionView | null;
+  /** Compatibility projection for clients predating generic game sessions. */
   ticTacToe?: TicTacToeView;
 };
 export type RoomDirectoryView = {
@@ -46,13 +50,16 @@ export type SessionView = {
   auth: { google: boolean };
   recoveryCode?: string;
   gameScores?: GameTotals;
+  scoresByGame?: Partial<Record<GameId, GameTotals>>;
 };
 export type RoomCommand = {
   commandId: string; roomId: string; expectedRevision: number;
-  type: 'keepAlive' | 'leave' | 'close' | 'regenerateInvite' | 'reopen' | 'theme' | 'memberInvite' | 'remove' | 'rename' | 'chat' | 'saveRoom' | 'revokeCodes' | 'deleteMessage' | 'clearChat' | 'ticTacToe' | 'gameSettings';
+  type: 'keepAlive' | 'leave' | 'close' | 'regenerateInvite' | 'reopen' | 'theme' | 'memberInvite' | 'remove' | 'rename' | 'chat' | 'saveRoom' | 'revokeCodes' | 'deleteMessage' | 'clearChat' | 'ticTacToe' | 'gameSettings' | 'gameSession' | 'gameAction';
   theme?: 'sage' | 'sunset' | 'midnight';
   allowPlayerGames?: boolean; targetId?: string; name?: string; text?: string; messageId?: string;
-  game?: { action: 'open' | 'hand' | 'start' | 'move' | 'next' | 'rematch' | 'resign' | 'cancel' | 'lobby'; mode?: TicTacToeMode; players?: string[]; random?: boolean; matchId?: string; cell?: number; ply?: number; raised?: boolean; fixtureId?: string };
+  sessionCommand?: GameSessionCommand; gameAction?: GameAction;
+  /** Legacy tic-tac-toe transport; new clients use gameAction. */
+  game?: TicTacToeAction;
 };
 export type CommandResult = { room: RoomView | null; invitation?: string };
 export type WireResult<T> = { ok: true; data: T } | { ok: false; error: { code: string; message: string } };

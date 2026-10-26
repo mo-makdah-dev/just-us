@@ -20,7 +20,7 @@ export function DashboardStats({ session }: { session: SessionView }) {
   return <section aria-label="Your statistics"><dl className="dashboard-stats">
     <div><dt>Saved rooms</dt><dd>{error ? unknown : counts?.rooms ?? unknown}</dd></div>
     <div><dt>Your people</dt><dd>{error ? unknown : counts?.people ?? unknown}</dd></div>
-    <div><dt>Games played</dt><dd>{session.gameScores?.played ?? 0}</dd></div>
-    <div><dt>Wins</dt><dd>{session.gameScores?.wins ?? 0}</dd></div>
+    <div><dt>Games played</dt><dd>{Object.values(session.scoresByGame || {}).reduce((total,score)=>total+(score?.played||0),0)}</dd></div>
+    <div><dt>Wins</dt><dd>{Object.values(session.scoresByGame || {}).reduce((total,score)=>total+(score?.wins||0),0)}</dd></div>
   </dl>{error && <p className="input-help" role="status">Room and people totals couldn’t load. They’ll retry when you return to this window.</p>}</section>;
 }

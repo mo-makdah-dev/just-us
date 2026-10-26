@@ -145,3 +145,42 @@ it('lets players start games by default and reserves the setting and destructive
   await expect(game(b.sessionId,{action:'start',players:ids().slice(0,2).map(p=>p.id)})).rejects.toMatchObject({code:'OWNER_ONLY'});
   const restored=new Rooms(storage,now);await restored.init();expect(restored.view(a.sessionId).room!.allowPlayerGames).toBe(false);
 });
+it('uses self-service shared sessions with concurrent joins, strict commands and saved game-scoped scores', async()=>{
+  const {rooms,a,b,spectator,send,storage,now}=await setup(true);
+  await send(a.sessionId,'gameSession',{sessionCommand:{action:'open',gameId:'tic-tac-toe'}});
+  await send(a.sessionId,'gameSession',{sessionCommand:{action:'mode',mode:'league'}});
+  const base=rooms.view(b.sessionId).room!;
+  const join=(sessionId:string)=>rooms.command(sessionId,{type:'gameSession',roomId:base.id,expectedRevision:base.revision,commandId:randomUUID(),sessionCommand:{action:'join'}});
+  await Promise.all([join(b.sessionId),join(spectator.sessionId)]);
+  expect(rooms.view(a.sessionId).room!.gameSession!.participants).toHaveLength(3);
+  await send(b.sessionId,'gameSession',{sessionCommand:{action:'ready',ready:false}});
+  await expect(send(a.sessionId,'gameSession',{sessionCommand:{action:'start'}})).rejects.toMatchObject({code:'PLAYERS_NOT_READY'});
+  await expect(rooms.command(a.sessionId,{type:'gameSession',roomId:base.id,expectedRevision:base.revision,commandId:randomUUID(),sessionCommand:{action:'ready',ready:true,playerId:'someone-else'}})).rejects.toThrow();
+  await expect(send(a.sessionId,'ticTacToe',{game:{action:'start',players:base.players.slice(0,2).map(p=>p.id)}})).rejects.toMatchObject({code:'SESSION_ACTION'});
+  await expect(rooms.command(a.sessionId,{type:'gameAction',roomId:base.id,expectedRevision:base.revision,commandId:randomUUID(),gameAction:{gameId:'tic-tac-toe',action:{action:'start',players:base.players.slice(0,2).map(p=>p.id)}}})).rejects.toThrow();
+  await send(spectator.sessionId,'gameSession',{sessionCommand:{action:'leave'}});
+  await send(a.sessionId,'gameSession',{sessionCommand:{action:'mode',mode:'single'}});
+  await send(b.sessionId,'gameSession',{sessionCommand:{action:'ready',ready:true}});
+  const input={type:'gameSession',roomId:base.id,expectedRevision:rooms.view(a.sessionId).room!.revision,commandId:randomUUID(),sessionCommand:{action:'start'}};
+  await rooms.command(a.sessionId,input);const match=rooms.view(a.sessionId).room!.gameSession!;
+  await rooms.command(a.sessionId,input);expect(rooms.view(a.sessionId).room!.gameSession!.game.match!.id).toBe(match.game.match!.id);
+  await expect(send(spectator.sessionId,'gameAction',{gameAction:{gameId:'tic-tac-toe',action:{action:'move',cell:0,ply:0,matchId:match.game.match!.id}}})).rejects.toMatchObject({code:'NOT_PLAYING'});
+  await send(b.sessionId,'gameAction',{gameAction:{gameId:'tic-tac-toe',action:{action:'resign',matchId:match.game.match!.id}}});
+  expect(rooms.view(a.sessionId).scoresByGame?.['tic-tac-toe']).toMatchObject({wins:1,played:1});
+  const restored=new Rooms(storage,now);await restored.init();expect(restored.view(a.sessionId).room!.gameSession).toBeNull();expect(restored.view(a.sessionId).scoresByGame?.['tic-tac-toe']?.wins).toBe(1);
+});
+
+it('migrates old game data and account totals without mixing game identities',async()=>{
+  const {rooms,storage,a,game,ids,now}=await setup(true);
+  await game(a.sessionId,{action:'start',players:ids().slice(0,2).map(p=>p.id)});
+  const raw=await storage.load() as {gameScoresByGame?:Record<string,Record<string,unknown>>;gameScores?:Record<string,unknown>;rooms:Record<string,{gameStates?:Record<string,unknown>;gameSession:unknown;ticTacToe?:unknown}>};
+  const accountId=rooms.view(a.sessionId).account!.id;
+  raw.gameScores={[accountId]:{played:4,wins:2,draws:1,losses:1,points:7,forfeits:0}};delete raw.gameScoresByGame;
+  for(const room of Object.values(raw.rooms)){room.ticTacToe=room.gameStates!['tic-tac-toe'];delete room.gameStates;delete (room as {gameSession?:unknown}).gameSession;}
+  await storage.save(raw);const migrated=new Rooms(storage,now);await migrated.init();
+  expect(migrated.view(a.sessionId).scoresByGame?.['tic-tac-toe']).toMatchObject({played:4,wins:2,points:7});
+  expect(migrated.view(a.sessionId).room!.gameSession).toBeNull();
+  const saved=await storage.load() as typeof raw;
+  expect(saved.gameScores).toBeUndefined();expect(saved.gameScoresByGame?.[accountId]?.['tic-tac-toe']).toMatchObject({played:4});
+  expect(Object.values(saved.rooms)[0].ticTacToe).toBeUndefined();expect(Object.values(saved.rooms)[0].gameStates?.['tic-tac-toe']).toMatchObject({open:false,match:null});
+});

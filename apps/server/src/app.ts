@@ -223,8 +223,8 @@ export async function createApplication(storage: Storage, settings: Settings) {
       try {
         if (!socket.data.joined) throw new AppError('NOT_READY', 'Wait for the room to connect.');
         limit(`watch:${sessionId}`, 30, 1000);
-        const data = z.object({roomId:z.string().length(32), watching:z.boolean()}).strict().parse(input);
-        await rooms.watchGame(sessionId, socket.id, data.roomId, data.watching);
+        const data = z.object({roomId:z.string().length(32), watching:z.boolean(),gameSessionId:z.string().regex(/^[a-f0-9]{32}$/).optional()}).strict().parse(input);
+        await rooms.watchGame(sessionId, socket.id, data.roomId, data.watching, data.gameSessionId);
         ack({ok:true});
       } catch(e) { ack(errorBody(e)); }
     });

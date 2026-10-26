@@ -1,5 +1,5 @@
 import {useEffect,useRef,useState} from 'react';
-import type {TicTacToeMatch} from '../../../packages/protocol/src/index.js';
+
 
 // Shared audio is unlocked by the user's first gesture, including entering the TV.
 let gameAudio: AudioContext | null = null;
@@ -10,10 +10,10 @@ export function useGameAudioUnlock() {
     return()=>{document.removeEventListener('pointerdown',unlock);document.removeEventListener('keydown',unlock);void gameAudio?.close().catch(()=>{});gameAudio=null;};
   },[]);
 }
-export function useMoveSound(match: TicTacToeMatch | null) {
+export function useTurnSound(match: {id:string;turn:number} | null) {
   const [enabled,setEnabled]=useState(()=>{try{return localStorage.getItem('just-us-game-sound')!=='off';}catch{return true;}});
   const previous=useRef<{id:string;ply:number}|null>(null);
-  const ply=match?.board.filter(Boolean).length??0;
+  const ply=match?.turn??0;
   useEffect(()=>{
     const last=previous.current;previous.current=match?{id:match.id,ply}:null;
     if(!enabled||!match||last?.id!==match.id||ply!==last.ply+1)return;
